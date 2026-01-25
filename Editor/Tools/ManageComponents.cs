@@ -21,7 +21,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Manages components on GameObjects with add, remove, and set_property actions.
         /// </summary>
-        [MCPTool("component_manage", "Manages components: add, remove, or set_property on GameObjects")]
+        [MCPTool("component_manage", "Manages components: add, remove, or set_property on GameObjects", Category = "Component")]
         public static object Manage(
             [MCPParam("action", "Action to perform: add, remove, set_property", required: true)] string action,
             [MCPParam("target", "Instance ID (int) or name/path (string) to identify target GameObject", required: true)] string target,

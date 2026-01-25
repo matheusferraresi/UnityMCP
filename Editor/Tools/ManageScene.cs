@@ -21,7 +21,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Creates a new empty scene at the specified path.
         /// </summary>
-        [MCPTool("scene_create", "Creates a new empty scene at the specified path")]
+        [MCPTool("scene_create", "Creates a new empty scene at the specified path", Category = "Scene")]
         public static object CreateScene(
             [MCPParam("name", "Name of the scene (without .unity extension)", required: true)] string name,
             [MCPParam("path", "Directory path relative to Assets (default: Scenes)")] string path = null)
@@ -111,7 +111,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Loads a scene by path or build index.
         /// </summary>
-        [MCPTool("scene_load", "Loads a scene by path (relative to Assets) or build index")]
+        [MCPTool("scene_load", "Loads a scene by path (relative to Assets) or build index", Category = "Scene")]
         public static object LoadScene(
             [MCPParam("name", "Name of the scene (without .unity extension)")] string name = null,
             [MCPParam("path", "Directory path relative to Assets (used with name)")] string path = null,
@@ -235,7 +235,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Saves the current scene, optionally to a new path.
         /// </summary>
-        [MCPTool("scene_save", "Saves the current scene, optionally to a new path")]
+        [MCPTool("scene_save", "Saves the current scene, optionally to a new path", Category = "Scene")]
         public static object SaveScene(
             [MCPParam("name", "Name for Save As (without .unity extension)")] string name = null,
             [MCPParam("path", "Directory path for Save As (relative to Assets)")] string path = null)
@@ -328,7 +328,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Gets information about the currently active scene.
         /// </summary>
-        [MCPTool("scene_get_active", "Gets information about the currently active scene")]
+        [MCPTool("scene_get_active", "Gets information about the currently active scene", Category = "Scene")]
         public static object GetActiveScene()
         {
             try
@@ -386,7 +386,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Gets the hierarchy of GameObjects in the current scene.
         /// </summary>
-        [MCPTool("scene_get_hierarchy", "Gets the hierarchy of GameObjects in the current scene")]
+        [MCPTool("scene_get_hierarchy", "Gets the hierarchy of GameObjects in the current scene", Category = "Scene")]
         public static object GetHierarchy(
             [MCPParam("parent", "Instance ID or name of parent GameObject to list children of (null for roots)")] string parent = null,
             [MCPParam("max_depth", "Maximum depth to traverse (default: 1, just immediate children)")] int maxDepth = 1,
@@ -512,7 +512,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Captures a screenshot of the Game View.
         /// </summary>
-        [MCPTool("scene_screenshot", "Captures a screenshot of the Game View")]
+        [MCPTool("scene_screenshot", "Captures a screenshot of the Game View", Category = "Scene")]
         public static object CaptureScreenshot(
             [MCPParam("filename", "Filename for the screenshot (without extension)")] string filename = null,
             [MCPParam("super_size", "Multiplier for resolution (1-4, default: 1)")] int superSize = 1)

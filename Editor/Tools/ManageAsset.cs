@@ -22,7 +22,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Manages assets in the Unity project with various operations.
         /// </summary>
-        [MCPTool("asset_manage", "Manages assets: create, delete, move, rename, duplicate, import, search, get_info, create_folder")]
+        [MCPTool("asset_manage", "Manages assets: create, delete, move, rename, duplicate, import, search, get_info, create_folder", Category = "Asset")]
         public static object Manage(
             [MCPParam("action", "Action to perform: create, delete, move, rename, duplicate, import, search, get_info, create_folder", required: true)] string action,
             [MCPParam("path", "Asset path (e.g., 'Assets/Materials/New.mat')")] string path = null,
@@ -760,7 +760,7 @@ namespace UnityMCP.Editor.Tools
 
             try
             {
-                PhysicMaterial physicMaterial = new PhysicMaterial();
+                PhysicsMaterial physicMaterial = new PhysicsMaterial();
 
                 // Apply properties
                 if (properties != null)
@@ -988,7 +988,7 @@ namespace UnityMCP.Editor.Tools
                     info["channels"] = audioClip.channels;
                     info["frequency"] = audioClip.frequency;
                 }
-                else if (asset is PhysicMaterial physicMaterial)
+                else if (asset is PhysicsMaterial physicMaterial)
                 {
                     info["dynamicFriction"] = physicMaterial.dynamicFriction;
                     info["staticFriction"] = physicMaterial.staticFriction;
