@@ -346,7 +346,8 @@ namespace UnityMCP.Editor.Core
                 ["protocolVersion"] = "2024-11-05",
                 ["capabilities"] = new JObject
                 {
-                    ["tools"] = new JObject()
+                    ["tools"] = new JObject(),
+                    ["resources"] = new JObject()
                 },
                 ["serverInfo"] = new JObject
                 {
@@ -631,10 +632,24 @@ namespace UnityMCP.Editor.Core
 
         private JObject HandleResourcesList(string requestId)
         {
-            // Stub implementation - resources not yet implemented
+            var resourceDefinitions = ResourceRegistry.GetDefinitions().ToList();
+            var resourcesArray = new JArray();
+
+            foreach (var resource in resourceDefinitions)
+            {
+                var resourceObject = new JObject
+                {
+                    ["uri"] = resource.uri,
+                    ["name"] = resource.name,
+                    ["description"] = resource.description,
+                    ["mimeType"] = resource.mimeType ?? "application/json"
+                };
+                resourcesArray.Add(resourceObject);
+            }
+
             var result = new JObject
             {
-                ["resources"] = new JArray()
+                ["resources"] = resourcesArray
             };
 
             return CreateSuccessResponse(result, requestId);
@@ -642,11 +657,105 @@ namespace UnityMCP.Editor.Core
 
         private JObject HandleResourcesRead(JToken paramsToken, string requestId)
         {
-            // Stub implementation - resources not yet implemented
-            return CreateErrorResponse(
-                MCPErrorCodes.MethodNotFound,
-                "Resources not yet implemented",
-                requestId);
+            if (paramsToken == null)
+            {
+                return CreateErrorResponse(MCPErrorCodes.InvalidParams, "Missing params", requestId);
+            }
+
+            string resourceUri = paramsToken["uri"]?.ToString();
+            if (string.IsNullOrEmpty(resourceUri))
+            {
+                return CreateErrorResponse(MCPErrorCodes.InvalidParams, "Missing 'uri' in params", requestId);
+            }
+
+            if (!ResourceRegistry.HasResource(resourceUri))
+            {
+                return CreateErrorResponse(MCPErrorCodes.MethodNotFound, $"Unknown resource: {resourceUri}", requestId);
+            }
+
+            try
+            {
+                ResourceContent content = InvokeResourceOnMainThread(resourceUri);
+
+                var contentsArray = new JArray();
+                var contentObject = new JObject
+                {
+                    ["uri"] = content.uri,
+                    ["mimeType"] = content.mimeType ?? "application/json"
+                };
+
+                if (!string.IsNullOrEmpty(content.text))
+                {
+                    contentObject["text"] = content.text;
+                }
+                else if (!string.IsNullOrEmpty(content.blob))
+                {
+                    contentObject["blob"] = content.blob;
+                }
+
+                contentsArray.Add(contentObject);
+
+                var resourceResult = new JObject
+                {
+                    ["contents"] = contentsArray
+                };
+
+                return CreateSuccessResponse(resourceResult, requestId);
+            }
+            catch (MCPException mcpException)
+            {
+                return CreateErrorResponse(mcpException.ErrorCode, mcpException.Message, requestId);
+            }
+            catch (Exception exception)
+            {
+                return CreateErrorResponse(MCPErrorCodes.InternalError, $"Resource read failed: {exception.Message}", requestId);
+            }
+        }
+
+        private ResourceContent InvokeResourceOnMainThread(string resourceUri)
+        {
+            ResourceContent result = null;
+            Exception error = null;
+            bool completed = false;
+
+            // Schedule on Unity main thread
+            EditorApplication.delayCall += () =>
+            {
+                try
+                {
+                    result = ResourceRegistry.Invoke(resourceUri);
+                }
+                catch (Exception exception)
+                {
+                    error = exception;
+                }
+                finally
+                {
+                    completed = true;
+                }
+            };
+
+            // Wait for completion
+            var startTime = DateTime.UtcNow;
+            while (!completed)
+            {
+                if ((DateTime.UtcNow - startTime).TotalSeconds > MainThreadTimeoutSeconds)
+                {
+                    throw new TimeoutException($"Resource invocation timed out after {MainThreadTimeoutSeconds} seconds");
+                }
+                Thread.Sleep(10);
+            }
+
+            if (error != null)
+            {
+                if (error is MCPException mcpException)
+                {
+                    throw mcpException;
+                }
+                throw new MCPException($"Resource invocation failed: {error.Message}", error, MCPErrorCodes.InternalError);
+            }
+
+            return result;
         }
 
         #endregion
