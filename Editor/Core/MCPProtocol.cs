@@ -399,6 +399,7 @@ namespace UnityMCP.Editor.Core
     {
         public string name;
         public string description;
+        public string category;
         public InputSchema inputSchema;
 
         public ToolDefinition() { }
