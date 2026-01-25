@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
 {
@@ -105,7 +106,7 @@ namespace UnityMCP.Editor.Tools
             string[] searchFolders = null;
             if (!string.IsNullOrWhiteSpace(folderPath))
             {
-                string normalizedFolderPath = NormalizePath(folderPath);
+                string normalizedFolderPath = PathUtilities.NormalizePath(folderPath);
                 if (!AssetDatabase.IsValidFolder(normalizedFolderPath))
                 {
                     return new
@@ -201,7 +202,7 @@ namespace UnityMCP.Editor.Tools
             string[] searchFolders = null;
             if (!string.IsNullOrWhiteSpace(folderPath))
             {
-                string normalizedFolderPath = NormalizePath(folderPath);
+                string normalizedFolderPath = PathUtilities.NormalizePath(folderPath);
                 if (!AssetDatabase.IsValidFolder(normalizedFolderPath))
                 {
                     return new
@@ -316,7 +317,7 @@ namespace UnityMCP.Editor.Tools
             // If material path is provided, get material keywords
             if (!string.IsNullOrWhiteSpace(materialPath))
             {
-                string normalizedMaterialPath = NormalizePath(materialPath);
+                string normalizedMaterialPath = PathUtilities.NormalizePath(materialPath);
                 Material material = AssetDatabase.LoadAssetAtPath<Material>(normalizedMaterialPath);
 
                 if (material == null)
@@ -406,7 +407,7 @@ namespace UnityMCP.Editor.Tools
             // Per-material keywords
             if (!string.IsNullOrWhiteSpace(materialPath))
             {
-                string normalizedMaterialPath = NormalizePath(materialPath);
+                string normalizedMaterialPath = PathUtilities.NormalizePath(materialPath);
                 Material material = AssetDatabase.LoadAssetAtPath<Material>(normalizedMaterialPath);
 
                 if (material == null)
@@ -503,7 +504,7 @@ namespace UnityMCP.Editor.Tools
             // Try path first
             if (!string.IsNullOrWhiteSpace(shaderPath))
             {
-                string normalizedPath = NormalizePath(shaderPath);
+                string normalizedPath = PathUtilities.NormalizePath(shaderPath);
                 Shader shader = AssetDatabase.LoadAssetAtPath<Shader>(normalizedPath);
                 if (shader != null)
                 {
@@ -729,33 +730,6 @@ namespace UnityMCP.Editor.Tools
 
             // Simple contains match
             return value.IndexOf(pattern, StringComparison.OrdinalIgnoreCase) >= 0;
-        }
-
-        /// <summary>
-        /// Normalizes an asset path.
-        /// </summary>
-        private static string NormalizePath(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                return "Assets";
-            }
-
-            string normalized = path.Replace('\\', '/').Trim().Trim('/');
-
-            if (!normalized.StartsWith("Assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets/" + normalized;
-            }
-
-            // Normalize case for "Assets" prefix
-            if (normalized.StartsWith("assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets" + normalized.Substring(6);
-            }
-
-            return normalized;
         }
 
         #endregion

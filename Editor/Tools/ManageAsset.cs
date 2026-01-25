@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
 {
@@ -90,7 +91,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'asset_type' parameter is required for create action.");
             }
 
-            string normalizedPath = NormalizePath(path);
+            string normalizedPath = PathUtilities.NormalizePath(path);
             string normalizedAssetType = assetType.ToLowerInvariant().Trim();
 
             // Check if asset already exists
@@ -107,7 +108,7 @@ namespace UnityMCP.Editor.Tools
             string parentDirectory = Path.GetDirectoryName(normalizedPath)?.Replace('\\', '/');
             if (!string.IsNullOrEmpty(parentDirectory) && !AssetDatabase.IsValidFolder(parentDirectory))
             {
-                if (!EnsureFolderExists(parentDirectory, out string folderError))
+                if (!PathUtilities.EnsureFolderExists(parentDirectory, out string folderError))
                 {
                     return new { success = false, error = folderError };
                 }
@@ -147,7 +148,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'path' parameter is required for create_folder action.");
             }
 
-            string normalizedPath = NormalizePath(path);
+            string normalizedPath = PathUtilities.NormalizePath(path);
             return CreateFolderRecursive(normalizedPath);
         }
 
@@ -161,7 +162,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'path' parameter is required for delete action.");
             }
 
-            string normalizedPath = NormalizePath(path);
+            string normalizedPath = PathUtilities.NormalizePath(path);
 
             if (!AssetExists(normalizedPath))
             {
@@ -223,8 +224,8 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'destination' parameter is required for move action.");
             }
 
-            string normalizedPath = NormalizePath(path);
-            string normalizedDestination = NormalizePath(destination);
+            string normalizedPath = PathUtilities.NormalizePath(path);
+            string normalizedDestination = PathUtilities.NormalizePath(destination);
 
             if (!AssetExists(normalizedPath))
             {
@@ -246,7 +247,7 @@ namespace UnityMCP.Editor.Tools
             string parentDirectory = Path.GetDirectoryName(normalizedDestination)?.Replace('\\', '/');
             if (!string.IsNullOrEmpty(parentDirectory) && !AssetDatabase.IsValidFolder(parentDirectory))
             {
-                if (!EnsureFolderExists(parentDirectory, out string folderError))
+                if (!PathUtilities.EnsureFolderExists(parentDirectory, out string folderError))
                 {
                     return new { success = false, error = folderError };
                 }
@@ -301,7 +302,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'destination' parameter is required for rename action. Provide the new name or full path.");
             }
 
-            string normalizedPath = NormalizePath(path);
+            string normalizedPath = PathUtilities.NormalizePath(path);
 
             if (!AssetExists(normalizedPath))
             {
@@ -376,7 +377,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'path' parameter is required for duplicate action.");
             }
 
-            string normalizedPath = NormalizePath(path);
+            string normalizedPath = PathUtilities.NormalizePath(path);
 
             if (!AssetExists(normalizedPath))
             {
@@ -402,14 +403,14 @@ namespace UnityMCP.Editor.Tools
             }
             else
             {
-                normalizedDestination = NormalizePath(destination);
+                normalizedDestination = PathUtilities.NormalizePath(destination);
             }
 
             // Ensure parent directory exists
             string parentDirectory = Path.GetDirectoryName(normalizedDestination)?.Replace('\\', '/');
             if (!string.IsNullOrEmpty(parentDirectory) && !AssetDatabase.IsValidFolder(parentDirectory))
             {
-                if (!EnsureFolderExists(parentDirectory, out string folderError))
+                if (!PathUtilities.EnsureFolderExists(parentDirectory, out string folderError))
                 {
                     return new { success = false, error = folderError };
                 }
@@ -459,7 +460,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'path' parameter is required for import action.");
             }
 
-            string normalizedPath = NormalizePath(path);
+            string normalizedPath = PathUtilities.NormalizePath(path);
 
             if (!AssetExists(normalizedPath))
             {
@@ -589,7 +590,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'path' parameter is required for get_info action.");
             }
 
-            string normalizedPath = NormalizePath(path);
+            string normalizedPath = PathUtilities.NormalizePath(path);
 
             if (!AssetExists(normalizedPath))
             {
@@ -815,85 +816,6 @@ namespace UnityMCP.Editor.Tools
         #endregion
 
         #region Helper Methods
-
-        /// <summary>
-        /// Ensures a folder exists, creating it recursively if needed.
-        /// Returns true if the folder exists or was created successfully.
-        /// </summary>
-        private static bool EnsureFolderExists(string path, out string error)
-        {
-            error = null;
-            string normalizedPath = path.Replace('\\', '/').TrimEnd('/');
-
-            if (AssetDatabase.IsValidFolder(normalizedPath))
-            {
-                return true;
-            }
-
-            // Split path into parts
-            string[] parts = normalizedPath.Split('/');
-            string currentPath = string.Empty;
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (i == 0)
-                {
-                    currentPath = parts[i];
-                    if (!currentPath.Equals("Assets", StringComparison.OrdinalIgnoreCase))
-                    {
-                        currentPath = "Assets";
-                    }
-                    continue;
-                }
-
-                string parentPath = currentPath;
-                currentPath = $"{currentPath}/{parts[i]}";
-
-                if (!AssetDatabase.IsValidFolder(currentPath))
-                {
-                    string guid = AssetDatabase.CreateFolder(parentPath, parts[i]);
-                    if (string.IsNullOrEmpty(guid))
-                    {
-                        error = $"Failed to create folder at '{currentPath}'.";
-                        return false;
-                    }
-                }
-            }
-
-            return true;
-        }
-
-        /// <summary>
-        /// Normalizes an asset path to ensure it starts with "Assets/".
-        /// </summary>
-        private static string NormalizePath(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                return string.Empty;
-            }
-
-            // Replace backslashes with forward slashes
-            string normalized = path.Replace('\\', '/').Trim();
-
-            // Remove leading/trailing slashes
-            normalized = normalized.Trim('/');
-
-            // Ensure path starts with "Assets"
-            if (!normalized.StartsWith("Assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets/" + normalized;
-            }
-
-            // Normalize case for "Assets" prefix
-            if (normalized.StartsWith("assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets" + normalized.Substring(6);
-            }
-
-            return normalized;
-        }
 
         /// <summary>
         /// Checks if an asset exists at the given path.

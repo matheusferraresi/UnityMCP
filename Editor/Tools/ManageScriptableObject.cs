@@ -98,7 +98,7 @@ namespace UnityMCP.Editor.Tools
             }
 
             // Build the asset path
-            string normalizedFolderPath = NormalizePath(folderPath ?? "Assets");
+            string normalizedFolderPath = PathUtilities.NormalizePath(folderPath ?? "Assets");
             string fileName = assetName.EndsWith(".asset", StringComparison.OrdinalIgnoreCase)
                 ? assetName
                 : $"{assetName}.asset";
@@ -118,7 +118,7 @@ namespace UnityMCP.Editor.Tools
             // Ensure parent directory exists
             if (!AssetDatabase.IsValidFolder(normalizedFolderPath))
             {
-                if (!EnsureFolderExists(normalizedFolderPath, out string folderError))
+                if (!PathUtilities.EnsureFolderExists(normalizedFolderPath, out string folderError))
                 {
                     return new { success = false, error = folderError };
                 }
@@ -190,7 +190,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("The 'patches' parameter is required for modify action.");
             }
 
-            string normalizedPath = NormalizePath(assetPath);
+            string normalizedPath = PathUtilities.NormalizePath(assetPath);
             ScriptableObject scriptableObject = AssetDatabase.LoadAssetAtPath<ScriptableObject>(normalizedPath);
 
             if (scriptableObject == null)
@@ -245,7 +245,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("The 'asset_path' parameter is required for get action.");
             }
 
-            string normalizedPath = NormalizePath(assetPath);
+            string normalizedPath = PathUtilities.NormalizePath(assetPath);
             ScriptableObject scriptableObject = AssetDatabase.LoadAssetAtPath<ScriptableObject>(normalizedPath);
 
             if (scriptableObject == null)
@@ -293,7 +293,7 @@ namespace UnityMCP.Editor.Tools
             string[] searchFolders = null;
             if (!string.IsNullOrWhiteSpace(folderPath))
             {
-                string normalizedFolderPath = NormalizePath(folderPath);
+                string normalizedFolderPath = PathUtilities.NormalizePath(folderPath);
                 if (!AssetDatabase.IsValidFolder(normalizedFolderPath))
                 {
                     return new
@@ -1142,7 +1142,7 @@ namespace UnityMCP.Editor.Tools
             }
 
             // Normalize the path
-            assetPath = NormalizePath(assetPath);
+            assetPath = PathUtilities.NormalizePath(assetPath);
 
             return AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
         }
@@ -1446,78 +1446,6 @@ namespace UnityMCP.Editor.Tools
                     }
                     return null;
             }
-        }
-
-        /// <summary>
-        /// Normalizes an asset path.
-        /// </summary>
-        private static string NormalizePath(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                return "Assets";
-            }
-
-            string normalized = path.Replace('\\', '/').Trim().Trim('/');
-
-            if (!normalized.StartsWith("Assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets/" + normalized;
-            }
-
-            // Normalize case for "Assets" prefix
-            if (normalized.StartsWith("assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets" + normalized.Substring(6);
-            }
-
-            return normalized;
-        }
-
-        /// <summary>
-        /// Ensures a folder exists, creating it recursively if needed.
-        /// </summary>
-        private static bool EnsureFolderExists(string path, out string error)
-        {
-            error = null;
-            string normalizedPath = path.Replace('\\', '/').TrimEnd('/');
-
-            if (AssetDatabase.IsValidFolder(normalizedPath))
-            {
-                return true;
-            }
-
-            string[] parts = normalizedPath.Split('/');
-            string currentPath = string.Empty;
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (i == 0)
-                {
-                    currentPath = parts[i];
-                    if (!currentPath.Equals("Assets", StringComparison.OrdinalIgnoreCase))
-                    {
-                        currentPath = "Assets";
-                    }
-                    continue;
-                }
-
-                string parentPath = currentPath;
-                currentPath = $"{currentPath}/{parts[i]}";
-
-                if (!AssetDatabase.IsValidFolder(currentPath))
-                {
-                    string guid = AssetDatabase.CreateFolder(parentPath, parts[i]);
-                    if (string.IsNullOrEmpty(guid))
-                    {
-                        error = $"Failed to create folder at '{currentPath}'.";
-                        return false;
-                    }
-                }
-            }
-
-            return true;
         }
 
         #endregion

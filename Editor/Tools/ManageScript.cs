@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
 {
@@ -106,7 +107,7 @@ namespace UnityMCP.Editor.Tools
             string parentDirectory = Path.GetDirectoryName(scriptPath)?.Replace('\\', '/');
             if (!string.IsNullOrEmpty(parentDirectory) && !AssetDatabase.IsValidFolder(parentDirectory))
             {
-                if (!EnsureFolderExists(parentDirectory, out string folderError))
+                if (!PathUtilities.EnsureFolderExists(parentDirectory, out string folderError))
                 {
                     return new { success = false, error = folderError };
                 }
@@ -675,7 +676,7 @@ namespace UnityMCP.Editor.Tools
         private static string BuildScriptPath(string name, string path)
         {
             // Normalize the path
-            string normalizedPath = NormalizePath(path);
+            string normalizedPath = PathUtilities.NormalizePath(path);
 
             // Ensure the name has .cs extension
             string fileName = name.EndsWith(".cs", StringComparison.OrdinalIgnoreCase) ? name : $"{name}.cs";
@@ -690,84 +691,6 @@ namespace UnityMCP.Editor.Tools
         private static string GetFullPath(string assetPath)
         {
             return Path.GetFullPath(assetPath);
-        }
-
-        /// <summary>
-        /// Normalizes an asset path to ensure it starts with "Assets/".
-        /// </summary>
-        private static string NormalizePath(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                return "Assets/Scripts";
-            }
-
-            // Replace backslashes with forward slashes
-            string normalized = path.Replace('\\', '/').Trim();
-
-            // Remove leading/trailing slashes
-            normalized = normalized.Trim('/');
-
-            // Ensure path starts with "Assets"
-            if (!normalized.StartsWith("Assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets/" + normalized;
-            }
-
-            // Normalize case for "Assets" prefix
-            if (normalized.StartsWith("assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets" + normalized.Substring(6);
-            }
-
-            return normalized;
-        }
-
-        /// <summary>
-        /// Ensures a folder exists, creating it recursively if needed.
-        /// </summary>
-        private static bool EnsureFolderExists(string path, out string error)
-        {
-            error = null;
-            string normalizedPath = path.Replace('\\', '/').TrimEnd('/');
-
-            if (AssetDatabase.IsValidFolder(normalizedPath))
-            {
-                return true;
-            }
-
-            // Split path into parts
-            string[] parts = normalizedPath.Split('/');
-            string currentPath = string.Empty;
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (i == 0)
-                {
-                    currentPath = parts[i];
-                    if (!currentPath.Equals("Assets", StringComparison.OrdinalIgnoreCase))
-                    {
-                        currentPath = "Assets";
-                    }
-                    continue;
-                }
-
-                string parentPath = currentPath;
-                currentPath = $"{currentPath}/{parts[i]}";
-
-                if (!AssetDatabase.IsValidFolder(currentPath))
-                {
-                    string guid = AssetDatabase.CreateFolder(parentPath, parts[i]);
-                    if (string.IsNullOrEmpty(guid))
-                    {
-                        error = $"Failed to create folder at '{currentPath}'.";
-                        return false;
-                    }
-                }
-            }
-
-            return true;
         }
 
         #endregion

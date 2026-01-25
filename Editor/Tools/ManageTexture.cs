@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
 {
@@ -101,7 +102,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("The 'texture_path' parameter is required for get action.");
             }
 
-            string normalizedPath = NormalizePath(texturePath);
+            string normalizedPath = PathUtilities.NormalizePath(texturePath);
             Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(normalizedPath);
 
             if (texture == null)
@@ -142,7 +143,7 @@ namespace UnityMCP.Editor.Tools
             string[] searchFolders = null;
             if (!string.IsNullOrWhiteSpace(folderPath))
             {
-                string normalizedFolderPath = NormalizePath(folderPath);
+                string normalizedFolderPath = PathUtilities.NormalizePath(folderPath);
                 if (!AssetDatabase.IsValidFolder(normalizedFolderPath))
                 {
                     return new
@@ -223,7 +224,7 @@ namespace UnityMCP.Editor.Tools
             string[] searchFolders = null;
             if (!string.IsNullOrWhiteSpace(folderPath))
             {
-                string normalizedFolderPath = NormalizePath(folderPath);
+                string normalizedFolderPath = PathUtilities.NormalizePath(folderPath);
                 if (!AssetDatabase.IsValidFolder(normalizedFolderPath))
                 {
                     return new
@@ -396,7 +397,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("The 'texture_path' parameter is required for set_import_settings action.");
             }
 
-            string normalizedPath = NormalizePath(texturePath);
+            string normalizedPath = PathUtilities.NormalizePath(texturePath);
             TextureImporter textureImporter = AssetImporter.GetAtPath(normalizedPath) as TextureImporter;
 
             if (textureImporter == null)
@@ -801,33 +802,6 @@ namespace UnityMCP.Editor.Tools
             }
 
             return $"{formattedSize:0.##} {sizes[sizeIndex]}";
-        }
-
-        /// <summary>
-        /// Normalizes an asset path.
-        /// </summary>
-        private static string NormalizePath(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                return "Assets";
-            }
-
-            string normalized = path.Replace('\\', '/').Trim().Trim('/');
-
-            if (!normalized.StartsWith("Assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets/" + normalized;
-            }
-
-            // Normalize case for "Assets" prefix
-            if (normalized.StartsWith("assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets" + normalized.Substring(6);
-            }
-
-            return normalized;
         }
 
         #endregion

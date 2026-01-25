@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
 {

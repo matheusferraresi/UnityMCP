@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
 {
@@ -74,7 +75,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams("'prefab_path' parameter is required for open_stage action.");
             }
 
-            string normalizedPath = NormalizePath(prefabPath);
+            string normalizedPath = PathUtilities.NormalizePath(prefabPath);
 
             // Ensure path has .prefab extension
             if (!normalizedPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
@@ -274,7 +275,7 @@ namespace UnityMCP.Editor.Tools
                 };
             }
 
-            string normalizedPath = NormalizePath(prefabPath);
+            string normalizedPath = PathUtilities.NormalizePath(prefabPath);
 
             // Ensure path has .prefab extension
             if (!normalizedPath.EndsWith(".prefab", StringComparison.OrdinalIgnoreCase))
@@ -297,7 +298,7 @@ namespace UnityMCP.Editor.Tools
             string parentDirectory = System.IO.Path.GetDirectoryName(normalizedPath)?.Replace('\\', '/');
             if (!string.IsNullOrEmpty(parentDirectory) && !AssetDatabase.IsValidFolder(parentDirectory))
             {
-                if (!EnsureFolderExists(parentDirectory, out string folderError))
+                if (!PathUtilities.EnsureFolderExists(parentDirectory, out string folderError))
                 {
                     return new { success = false, error = folderError };
                 }
@@ -425,38 +426,6 @@ namespace UnityMCP.Editor.Tools
         }
 
         /// <summary>
-        /// Normalizes an asset path to ensure it starts with "Assets/".
-        /// </summary>
-        private static string NormalizePath(string path)
-        {
-            if (string.IsNullOrEmpty(path))
-            {
-                return string.Empty;
-            }
-
-            // Replace backslashes with forward slashes
-            string normalized = path.Replace('\\', '/').Trim();
-
-            // Remove leading/trailing slashes
-            normalized = normalized.Trim('/');
-
-            // Ensure path starts with "Assets"
-            if (!normalized.StartsWith("Assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets/" + normalized;
-            }
-
-            // Normalize case for "Assets" prefix
-            if (normalized.StartsWith("assets/", StringComparison.OrdinalIgnoreCase) ||
-                normalized.Equals("assets", StringComparison.OrdinalIgnoreCase))
-            {
-                normalized = "Assets" + normalized.Substring(6);
-            }
-
-            return normalized;
-        }
-
-        /// <summary>
         /// Finds a GameObject by instance ID or name in the current scene.
         /// </summary>
         private static GameObject FindGameObject(string target, bool searchInactive)
@@ -544,52 +513,6 @@ namespace UnityMCP.Editor.Tools
             }
 
             return null;
-        }
-
-        /// <summary>
-        /// Ensures a folder exists, creating it recursively if needed.
-        /// </summary>
-        private static bool EnsureFolderExists(string path, out string error)
-        {
-            error = null;
-            string normalizedPath = path.Replace('\\', '/').TrimEnd('/');
-
-            if (AssetDatabase.IsValidFolder(normalizedPath))
-            {
-                return true;
-            }
-
-            // Split path into parts
-            string[] parts = normalizedPath.Split('/');
-            string currentPath = string.Empty;
-
-            for (int i = 0; i < parts.Length; i++)
-            {
-                if (i == 0)
-                {
-                    currentPath = parts[i];
-                    if (!currentPath.Equals("Assets", StringComparison.OrdinalIgnoreCase))
-                    {
-                        currentPath = "Assets";
-                    }
-                    continue;
-                }
-
-                string parentPath = currentPath;
-                currentPath = $"{currentPath}/{parts[i]}";
-
-                if (!AssetDatabase.IsValidFolder(currentPath))
-                {
-                    string guid = AssetDatabase.CreateFolder(parentPath, parts[i]);
-                    if (string.IsNullOrEmpty(guid))
-                    {
-                        error = $"Failed to create folder at '{currentPath}'.";
-                        return false;
-                    }
-                }
-            }
-
-            return true;
         }
 
         #endregion
