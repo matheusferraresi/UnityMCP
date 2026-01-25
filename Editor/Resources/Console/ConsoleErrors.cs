@@ -109,13 +109,17 @@ namespace UnityMCP.Editor.Resources.Console
                 var instanceIdField = logEntryType.GetField("instanceID", BindingFlags.Instance | BindingFlags.Public);
 
                 // Mode flags for log type classification
-                // Based on Unity's internal ConsoleFlags enum
-                const int ErrorFlag = 1 << 0;       // 1
-                const int AssertFlag = 1 << 1;      // 2
-                const int WarningFlag = 1 << 9;     // 512
-                const int ErrorPauseFlag = 1 << 2;  // 4
-                const int ScriptCompileError = 1 << 10; // 1024
-                const int ScriptCompileWarning = 1 << 11; // 2048
+                // Based on Unity's internal LogEntry.mode field
+                const int ErrorFlag = 1 << 0;              // 1 - Error
+                const int AssertFlag = 1 << 1;             // 2 - Assert
+                const int FatalFlag = 1 << 4;              // 16 - Fatal
+                const int AssetImportErrorFlag = 1 << 6;   // 64 - Asset import errors
+                const int AssetImportWarningFlag = 1 << 7; // 128 - Asset import warnings
+                const int ScriptingErrorFlag = 1 << 8;     // 256 - Runtime script errors
+                const int ScriptingWarningFlag = 1 << 9;   // 512 - Runtime script warnings
+                const int ScriptCompileError = 1 << 11;    // 2048 - Compilation errors
+                const int ScriptCompileWarning = 1 << 12;  // 4096 - Compilation warnings
+                const int ScriptingExceptionFlag = 1 << 17; // 131072 - Runtime exceptions
 
                 startGettingEntriesMethod.Invoke(null, null);
 
@@ -159,9 +163,13 @@ namespace UnityMCP.Editor.Resources.Console
                         // Categorize based on mode flags
                         bool isError = (mode & ErrorFlag) != 0 ||
                                        (mode & AssertFlag) != 0 ||
-                                       (mode & ErrorPauseFlag) != 0 ||
-                                       (mode & ScriptCompileError) != 0;
-                        bool isWarning = (mode & WarningFlag) != 0 ||
+                                       (mode & FatalFlag) != 0 ||
+                                       (mode & AssetImportErrorFlag) != 0 ||
+                                       (mode & ScriptingErrorFlag) != 0 ||
+                                       (mode & ScriptCompileError) != 0 ||
+                                       (mode & ScriptingExceptionFlag) != 0;
+                        bool isWarning = (mode & AssetImportWarningFlag) != 0 ||
+                                         (mode & ScriptingWarningFlag) != 0 ||
                                          (mode & ScriptCompileWarning) != 0;
 
                         if (isError)
@@ -213,11 +221,17 @@ namespace UnityMCP.Editor.Resources.Console
         /// </summary>
         private static string ClassifyLogEntry(int mode, string message)
         {
-            const int ScriptCompileError = 1 << 10;
-            const int ScriptCompileWarning = 1 << 11;
-            const int ErrorFlag = 1 << 0;
-            const int AssertFlag = 1 << 1;
-            const int WarningFlag = 1 << 9;
+            // Mode flags matching Unity's internal LogEntry.mode field
+            const int ErrorFlag = 1 << 0;              // 1
+            const int AssertFlag = 1 << 1;             // 2
+            const int FatalFlag = 1 << 4;              // 16
+            const int AssetImportErrorFlag = 1 << 6;   // 64
+            const int AssetImportWarningFlag = 1 << 7; // 128
+            const int ScriptingErrorFlag = 1 << 8;     // 256
+            const int ScriptingWarningFlag = 1 << 9;   // 512
+            const int ScriptCompileError = 1 << 11;    // 2048
+            const int ScriptCompileWarning = 1 << 12;  // 4096
+            const int ScriptingExceptionFlag = 1 << 17; // 131072
 
             if ((mode & ScriptCompileError) != 0)
             {
@@ -234,43 +248,77 @@ namespace UnityMCP.Editor.Resources.Console
                 return "Assert";
             }
 
-            if ((mode & ErrorFlag) != 0)
+            if ((mode & ScriptingExceptionFlag) != 0)
             {
-                // Try to determine more specific error type from message
-                if (message.Contains("NullReferenceException"))
-                {
-                    return "NullReferenceException";
-                }
-
-                if (message.Contains("MissingReferenceException"))
-                {
-                    return "MissingReferenceException";
-                }
-
-                if (message.Contains("IndexOutOfRangeException"))
-                {
-                    return "IndexOutOfRangeException";
-                }
-
-                if (message.Contains("ArgumentException"))
-                {
-                    return "ArgumentException";
-                }
-
-                if (message.Contains("InvalidOperationException"))
-                {
-                    return "InvalidOperationException";
-                }
-
-                return "RuntimeError";
+                // Runtime exception - try to determine specific type from message
+                return ClassifyExceptionFromMessage(message);
             }
 
-            if ((mode & WarningFlag) != 0)
+            if ((mode & (ErrorFlag | FatalFlag | AssetImportErrorFlag | ScriptingErrorFlag)) != 0)
+            {
+                // Try to determine more specific error type from message
+                return ClassifyExceptionFromMessage(message);
+            }
+
+            if ((mode & (AssetImportWarningFlag | ScriptingWarningFlag)) != 0)
             {
                 return "Warning";
             }
 
             return "Info";
+        }
+
+        /// <summary>
+        /// Classifies an exception/error based on the message content.
+        /// </summary>
+        private static string ClassifyExceptionFromMessage(string message)
+        {
+            if (string.IsNullOrEmpty(message))
+            {
+                return "RuntimeError";
+            }
+
+            if (message.Contains("NullReferenceException"))
+            {
+                return "NullReferenceException";
+            }
+
+            if (message.Contains("MissingReferenceException"))
+            {
+                return "MissingReferenceException";
+            }
+
+            if (message.Contains("IndexOutOfRangeException"))
+            {
+                return "IndexOutOfRangeException";
+            }
+
+            if (message.Contains("ArgumentException"))
+            {
+                return "ArgumentException";
+            }
+
+            if (message.Contains("InvalidOperationException"))
+            {
+                return "InvalidOperationException";
+            }
+
+            if (message.Contains("KeyNotFoundException"))
+            {
+                return "KeyNotFoundException";
+            }
+
+            if (message.Contains("FormatException"))
+            {
+                return "FormatException";
+            }
+
+            if (message.Contains("Exception"))
+            {
+                return "Exception";
+            }
+
+            return "RuntimeError";
         }
 
         /// <summary>

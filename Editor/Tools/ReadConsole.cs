@@ -18,20 +18,26 @@ namespace UnityMCP.Editor.Tools
         private const int DefaultPageSize = 50;
         private const int MaxPageSize = 500;
 
-        // Mode bit flags for log entry types
-        private const int ModeBitError = 1 << 0;
-        private const int ModeBitAssert = 1 << 1;
-        private const int ModeBitWarning = 1 << 2;
-        private const int ModeBitLog = 1 << 3;
-        private const int ModeBitException = 1 << 4;
-        private const int ModeBitScriptingError = 1 << 9;
-        private const int ModeBitScriptingWarning = 1 << 10;
-        private const int ModeBitScriptingLog = 1 << 11;
-        private const int ModeBitScriptingException = 1 << 18;
+        // Mode bit flags for log entry types (based on Unity's internal ConsoleFlags)
+        // These values are determined by Unity's internal LogEntry.mode field
+        private const int ModeBitError = 1 << 0;              // 1 - Error
+        private const int ModeBitAssert = 1 << 1;             // 2 - Assert
+        private const int ModeBitLog = 1 << 2;                // 4 - Debug.Log (regular log/info)
+        private const int ModeBitFatal = 1 << 4;              // 16 - Fatal errors
+        private const int ModeBitAssetImportError = 1 << 6;   // 64 - Asset import errors
+        private const int ModeBitAssetImportWarning = 1 << 7; // 128 - Asset import warnings
+        private const int ModeBitScriptingError = 1 << 8;     // 256 - Runtime script errors
+        private const int ModeBitScriptingWarning = 1 << 9;   // 512 - Runtime script warnings (Debug.LogWarning)
+        private const int ModeBitScriptingLog = 1 << 10;      // 1024 - Runtime script logs (Debug.Log from scripts)
+        private const int ModeBitScriptCompileError = 1 << 11;   // 2048 - Compilation errors
+        private const int ModeBitScriptCompileWarning = 1 << 12; // 4096 - Compilation warnings
+        private const int ModeBitScriptingException = 1 << 17;   // 131072 - Runtime exceptions
 
         // Combined masks for log type categories
-        private const int ErrorMask = ModeBitError | ModeBitAssert | ModeBitException | ModeBitScriptingError | ModeBitScriptingException;
-        private const int WarningMask = ModeBitWarning | ModeBitScriptingWarning;
+        private const int ErrorMask = ModeBitError | ModeBitAssert | ModeBitFatal |
+                                      ModeBitAssetImportError | ModeBitScriptingError |
+                                      ModeBitScriptCompileError | ModeBitScriptingException;
+        private const int WarningMask = ModeBitAssetImportWarning | ModeBitScriptingWarning | ModeBitScriptCompileWarning;
         private const int LogMask = ModeBitLog | ModeBitScriptingLog;
 
         #endregion
