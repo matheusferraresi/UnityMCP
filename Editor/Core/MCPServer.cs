@@ -15,6 +15,36 @@ using UnityMCP.Editor.Utilities;
 namespace UnityMCP.Editor.Core
 {
     /// <summary>
+    /// Handles automatic restart of MCP server after domain reload.
+    /// </summary>
+    [InitializeOnLoad]
+    internal static class MCPServerDomainReload
+    {
+        private const string SessionStateKey = "UnityMCP_ServerShouldRun";
+        private const string SessionStatePortKey = "UnityMCP_ServerPort";
+
+        static MCPServerDomainReload()
+        {
+            // Check if server should be running after domain reload
+            if (SessionState.GetBool(SessionStateKey, false))
+            {
+                int port = SessionState.GetInt(SessionStatePortKey, 8080);
+                EditorApplication.delayCall += () =>
+                {
+                    MCPServer.Instance.Port = port;
+                    MCPServer.Instance.Start();
+                };
+            }
+        }
+
+        public static void SetShouldRun(bool shouldRun, int port)
+        {
+            SessionState.SetBool(SessionStateKey, shouldRun);
+            SessionState.SetInt(SessionStatePortKey, port);
+        }
+    }
+
+    /// <summary>
     /// HTTP server that handles MCP (Model Context Protocol) JSON-RPC requests.
     /// Provides tool discovery and invocation for AI assistants.
     /// </summary>
@@ -93,6 +123,9 @@ namespace UnityMCP.Editor.Core
 
                 _cancellationTokenSource = new CancellationTokenSource();
 
+                // Persist state for domain reload
+                MCPServerDomainReload.SetShouldRun(true, _port);
+
                 Debug.Log($"[MCPServer] Started on http://localhost:{_port}/");
 
                 ListenAsync(_cancellationTokenSource.Token);
@@ -107,7 +140,8 @@ namespace UnityMCP.Editor.Core
         /// <summary>
         /// Stops the HTTP server.
         /// </summary>
-        public void Stop()
+        /// <param name="clearPersistence">If true, clears the persisted state so server won't restart after domain reload.</param>
+        public void Stop(bool clearPersistence = true)
         {
             _cancellationTokenSource?.Cancel();
             _cancellationTokenSource?.Dispose();
@@ -128,6 +162,12 @@ namespace UnityMCP.Editor.Core
                 {
                     _listener = null;
                 }
+            }
+
+            // Clear persistence so server won't auto-restart after domain reload
+            if (clearPersistence)
+            {
+                MCPServerDomainReload.SetShouldRun(false, _port);
             }
 
             Debug.Log("[MCPServer] Stopped.");
