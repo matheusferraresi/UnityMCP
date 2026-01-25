@@ -788,7 +788,7 @@ namespace UnityMCP.Editor.Core
         {
             object result = null;
             Exception error = null;
-            bool completed = false;
+            using var completedEvent = new ManualResetEventSlim(false);
 
             // Schedule on Unity main thread using dispatcher that works even when Unity is not in focus
             MainThreadDispatcher.Enqueue(() =>
@@ -804,19 +804,15 @@ namespace UnityMCP.Editor.Core
                 }
                 finally
                 {
-                    completed = true;
+                    completedEvent.Set();
                 }
             });
 
             // Block and wait for completion (safe since we're on a native/background thread, not the main thread)
-            var startTime = DateTime.UtcNow;
-            while (!completed)
+            int timeoutMilliseconds = MainThreadTimeoutSeconds * 1000;
+            if (!completedEvent.Wait(timeoutMilliseconds))
             {
-                if ((DateTime.UtcNow - startTime).TotalSeconds > MainThreadTimeoutSeconds)
-                {
-                    throw new TimeoutException($"Tool invocation timed out after {MainThreadTimeoutSeconds} seconds");
-                }
-                Thread.Sleep(10);
+                throw new TimeoutException($"Tool invocation timed out after {MainThreadTimeoutSeconds} seconds");
             }
 
             if (error != null)
