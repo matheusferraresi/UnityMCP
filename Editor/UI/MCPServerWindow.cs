@@ -86,7 +86,7 @@ namespace UnityMCP.Editor.UI
             }
 
             GUI.color = isRunning ? Color.green : Color.gray;
-            GUILayout.Label(statusText, EditorStyles.boldLabel, GUILayout.Width(120));
+            GUILayout.Label(statusText, EditorStyles.boldLabel, GUILayout.Width(140));
             GUI.color = Color.white;
 
             GUILayout.FlexibleSpace();
