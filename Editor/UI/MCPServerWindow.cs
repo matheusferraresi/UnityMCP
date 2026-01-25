@@ -65,7 +65,8 @@ namespace UnityMCP.Editor.UI
 
         private void DrawToolbar()
         {
-            bool isRunning = MCPServer.Instance?.IsRunning ?? false;
+            // Server is running if either native proxy or managed server is active
+            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
 
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
@@ -115,7 +116,7 @@ namespace UnityMCP.Editor.UI
 
         private void DrawServerInfo()
         {
-            bool isRunning = MCPServer.Instance?.IsRunning ?? false;
+            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
             int port = MCPServer.Instance?.Port ?? 8080;
             string endpoint = $"http://localhost:{port}/";
 
@@ -135,15 +136,16 @@ namespace UnityMCP.Editor.UI
 
             // Tool and resource counts
             int toolCount = ToolRegistry.Count;
+            int resourceCount = ResourceRegistry.Count;
             EditorGUILayout.LabelField("Tools", toolCount.ToString());
-            EditorGUILayout.LabelField("Resources", "0"); // Resources not yet implemented
+            EditorGUILayout.LabelField("Resources", resourceCount.ToString());
 
             EditorGUI.indentLevel--;
         }
 
         private void DrawPortConfiguration()
         {
-            bool isRunning = MCPServer.Instance?.IsRunning ?? false;
+            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
 
             EditorGUILayout.LabelField("Configuration", EditorStyles.boldLabel);
 
