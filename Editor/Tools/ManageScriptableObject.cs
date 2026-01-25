@@ -1196,9 +1196,10 @@ namespace UnityMCP.Editor.Tools
                         }
                     }
                 }
-                catch (ReflectionTypeLoadException)
+                catch (ReflectionTypeLoadException ex)
                 {
                     // Some assemblies may have types that cannot be loaded
+                    Debug.LogWarning($"[ManageScriptableObject] ReflectionTypeLoadException when scanning assembly '{assembly.GetName().Name}': {ex.Message}");
                     continue;
                 }
             }

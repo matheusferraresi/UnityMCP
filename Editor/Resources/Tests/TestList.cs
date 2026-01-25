@@ -164,9 +164,10 @@ namespace UnityMCP.Editor.Resources.Tests
                 // Alternative: Parse categories from FullName if they follow a convention
                 // Some test frameworks embed category info in the test path
             }
-            catch (Exception)
+            catch (Exception ex)
             {
                 // Categories extraction failed, return empty array
+                Debug.LogWarning($"[TestList] Failed to extract test categories: {ex.Message}");
             }
 
             return categories.ToArray();

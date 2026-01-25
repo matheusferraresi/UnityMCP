@@ -234,9 +234,10 @@ namespace UnityMCP.Editor.Tools
                                 results.Add(gameObject);
                             }
                         }
-                        catch (UnityException)
+                        catch (UnityException ex)
                         {
                             // CompareTag throws if tag doesn't exist - expected behavior
+                            Debug.LogWarning($"[FindGameObjects] UnityException when comparing tag: {ex.Message}");
                         }
                     }
                 }
@@ -248,9 +249,10 @@ namespace UnityMCP.Editor.Tools
                     var foundObjects = GameObject.FindGameObjectsWithTag(searchTerm);
                     results.AddRange(foundObjects.Where(go => go != null));
                 }
-                catch (UnityException)
+                catch (UnityException ex)
                 {
                     // Tag might not exist at runtime - return empty results
+                    Debug.LogWarning($"[FindGameObjects] UnityException when finding objects by tag: {ex.Message}");
                 }
             }
 
