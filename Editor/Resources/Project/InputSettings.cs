@@ -3,7 +3,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-#if ENABLE_INPUT_SYSTEM
+#if UNITY_MCP_INPUT_SYSTEM
 using UnityEngine.InputSystem;
 #endif
 
@@ -22,14 +22,14 @@ namespace UnityMCP.Editor.Resources.Project
         [MCPResource("project://input", "Input system actions, bindings, or legacy input axes")]
         public static object Get()
         {
-#if ENABLE_INPUT_SYSTEM
+#if UNITY_MCP_INPUT_SYSTEM
             return GetNewInputSystemSettings();
 #else
             return GetLegacyInputSettings();
 #endif
         }
 
-#if ENABLE_INPUT_SYSTEM
+#if UNITY_MCP_INPUT_SYSTEM
         private static object GetNewInputSystemSettings()
         {
             // Find all InputActionAsset files in the project

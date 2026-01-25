@@ -150,9 +150,9 @@ namespace UnityMCP.Editor.Services
         }
 
         /// <summary>
-        /// Finalizes the job and computes statistics.
+        /// Completes the job and computes statistics.
         /// </summary>
-        public void Finalize()
+        public void Complete()
         {
             status = ProfilerJobStatus.Completed;
             finishedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -559,7 +559,7 @@ namespace UnityMCP.Editor.Services
                 _isRecording = false;
 
                 // Finalize job
-                _currentJob.Finalize();
+                _currentJob.Complete();
                 SaveToSessionState();
 
                 var completedJob = _currentJob;
