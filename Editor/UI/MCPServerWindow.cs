@@ -71,8 +71,22 @@ namespace UnityMCP.Editor.UI
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
             // Status indicator
+            string statusText;
+            if (NativeProxy.IsInitialized)
+            {
+                statusText = "\u25CF Running - Native";
+            }
+            else if (MCPServer.Instance?.IsRunning ?? false)
+            {
+                statusText = "\u25CF Running - Fallback";
+            }
+            else
+            {
+                statusText = "\u25CB Stopped";
+            }
+
             GUI.color = isRunning ? Color.green : Color.gray;
-            GUILayout.Label(isRunning ? "\u25CF Running" : "\u25CB Stopped", EditorStyles.boldLabel, GUILayout.Width(80));
+            GUILayout.Label(statusText, EditorStyles.boldLabel, GUILayout.Width(120));
             GUI.color = Color.white;
 
             GUILayout.FlexibleSpace();
