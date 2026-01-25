@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
+using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Core
 {
@@ -427,12 +428,7 @@ namespace UnityMCP.Editor.Core
                 }
 
                 // Convert the result to JSON
-                string jsonResult = JsonConvert.SerializeObject(result, new JsonSerializerSettings
-                {
-                    ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
-                    NullValueHandling = NullValueHandling.Include,
-                    Formatting = Formatting.Indented
-                });
+                string jsonResult = JsonConvert.SerializeObject(result, JsonUtilities.DefaultSettings);
 
                 return new ResourceContent
                 {
