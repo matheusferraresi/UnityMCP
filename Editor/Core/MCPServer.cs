@@ -29,11 +29,11 @@ namespace UnityMCP.Editor.Core
             if (SessionState.GetBool(SessionStateKey, false))
             {
                 int port = SessionState.GetInt(SessionStatePortKey, 8080);
-                EditorApplication.delayCall += () =>
+                MainThreadDispatcher.Enqueue(() =>
                 {
                     MCPServer.Instance.Port = port;
                     MCPServer.Instance.Start();
-                };
+                });
             }
         }
 
@@ -125,6 +125,9 @@ namespace UnityMCP.Editor.Core
 
                 // Persist state for domain reload
                 MCPServerDomainReload.SetShouldRun(true, _port);
+
+                // Enable running in background so server responds when Unity is not focused
+                Application.runInBackground = true;
 
                 Debug.Log($"[MCPServer] Started on http://localhost:{_port}/");
 
@@ -378,6 +381,58 @@ namespace UnityMCP.Editor.Core
 
         #endregion
 
+        #region Public API for Native Proxy
+
+        /// <summary>
+        /// Handles a raw JSON-RPC request. Called from NativeProxy.
+        /// This method is synchronous and can be called from any thread.
+        /// Tool and resource invocations are automatically dispatched to Unity's main thread.
+        /// </summary>
+        /// <param name="jsonRequest">The raw JSON-RPC request string.</param>
+        /// <returns>The JSON-RPC response string.</returns>
+        public string HandleRequest(string jsonRequest)
+        {
+            try
+            {
+                var requestObject = JObject.Parse(jsonRequest);
+                string requestId = requestObject["id"]?.ToString();
+                string method = requestObject["method"]?.ToString();
+
+                if (string.IsNullOrEmpty(method))
+                {
+                    return CreateErrorResponse(MCPErrorCodes.InvalidRequest, "Missing 'method' field", requestId)
+                        .ToString(Formatting.None);
+                }
+
+                JToken paramsToken = requestObject["params"];
+
+                JObject response = method switch
+                {
+                    "initialize" => HandleInitialize(requestId),
+                    "tools/list" => HandleToolsList(requestId),
+                    "tools/call" => HandleToolsCallSync(paramsToken, requestId),
+                    "resources/list" => HandleResourcesList(requestId),
+                    "resources/read" => HandleResourcesRead(paramsToken, requestId),
+                    _ => CreateErrorResponse(MCPErrorCodes.MethodNotFound, $"Method not found: {method}", requestId)
+                };
+
+                return response.ToString(Formatting.None);
+            }
+            catch (JsonException jsonException)
+            {
+                return CreateErrorResponse(MCPErrorCodes.ParseError, $"Parse error: {jsonException.Message}", null)
+                    .ToString(Formatting.None);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogError($"[MCPServer] Error handling request: {exception}");
+                return CreateErrorResponse(MCPErrorCodes.InternalError, $"Internal error: {exception.Message}", null)
+                    .ToString(Formatting.None);
+            }
+        }
+
+        #endregion
+
         #region MCP Method Handlers
 
         private JObject HandleInitialize(string requestId)
@@ -566,6 +621,85 @@ namespace UnityMCP.Editor.Core
             }
         }
 
+        /// <summary>
+        /// Synchronous version of HandleToolsCall for use with NativeProxy.
+        /// This method blocks until the tool execution completes on the main thread.
+        /// </summary>
+        private JObject HandleToolsCallSync(JToken paramsToken, string requestId)
+        {
+            if (paramsToken == null)
+            {
+                return CreateErrorResponse(MCPErrorCodes.InvalidParams, "Missing params", requestId);
+            }
+
+            string toolName = paramsToken["name"]?.ToString();
+            if (string.IsNullOrEmpty(toolName))
+            {
+                return CreateErrorResponse(MCPErrorCodes.InvalidParams, "Missing 'name' in params", requestId);
+            }
+
+            if (!ToolRegistry.HasTool(toolName))
+            {
+                return CreateErrorResponse(MCPErrorCodes.MethodNotFound, $"Unknown tool: {toolName}", requestId);
+            }
+
+            JObject argumentsObject = paramsToken["arguments"] as JObject ?? new JObject();
+
+            try
+            {
+                object result = InvokeToolOnMainThread(toolName, argumentsObject);
+
+                var contentArray = new JArray();
+                contentArray.Add(new JObject
+                {
+                    ["type"] = "text",
+                    ["text"] = SerializeToolResult(result)
+                });
+
+                var toolResult = new JObject
+                {
+                    ["content"] = contentArray,
+                    ["isError"] = false
+                };
+
+                return CreateSuccessResponse(toolResult, requestId);
+            }
+            catch (MCPException mcpException)
+            {
+                var contentArray = new JArray();
+                contentArray.Add(new JObject
+                {
+                    ["type"] = "text",
+                    ["text"] = mcpException.Message
+                });
+
+                var toolResult = new JObject
+                {
+                    ["content"] = contentArray,
+                    ["isError"] = true
+                };
+
+                return CreateSuccessResponse(toolResult, requestId);
+            }
+            catch (Exception exception)
+            {
+                var contentArray = new JArray();
+                contentArray.Add(new JObject
+                {
+                    ["type"] = "text",
+                    ["text"] = $"Tool execution failed: {exception.Message}"
+                });
+
+                var toolResult = new JObject
+                {
+                    ["content"] = contentArray,
+                    ["isError"] = true
+                };
+
+                return CreateSuccessResponse(toolResult, requestId);
+            }
+        }
+
         private string SerializeToolResult(object result)
         {
             if (result == null)
@@ -600,8 +734,8 @@ namespace UnityMCP.Editor.Core
             Exception error = null;
             bool completed = false;
 
-            // Schedule on Unity main thread
-            EditorApplication.delayCall += () =>
+            // Schedule on Unity main thread using dispatcher that works even when Unity is not in focus
+            MainThreadDispatcher.Enqueue(() =>
             {
                 try
                 {
@@ -616,7 +750,7 @@ namespace UnityMCP.Editor.Core
                 {
                     completed = true;
                 }
-            };
+            });
 
             // Wait for completion on a background thread
             Task.Run(() =>
@@ -644,6 +778,57 @@ namespace UnityMCP.Editor.Core
             });
 
             return taskCompletionSource.Task;
+        }
+
+        /// <summary>
+        /// Synchronous version of InvokeToolOnMainThreadAsync for use with NativeProxy.
+        /// This method blocks the calling thread until the tool execution completes on Unity's main thread.
+        /// </summary>
+        private object InvokeToolOnMainThread(string toolName, JObject arguments)
+        {
+            object result = null;
+            Exception error = null;
+            bool completed = false;
+
+            // Schedule on Unity main thread using dispatcher that works even when Unity is not in focus
+            MainThreadDispatcher.Enqueue(() =>
+            {
+                try
+                {
+                    var argumentsDictionary = ConvertJObjectToDictionary(arguments);
+                    result = ToolRegistry.Invoke(toolName, argumentsDictionary);
+                }
+                catch (Exception exception)
+                {
+                    error = exception;
+                }
+                finally
+                {
+                    completed = true;
+                }
+            });
+
+            // Block and wait for completion (safe since we're on a native/background thread, not the main thread)
+            var startTime = DateTime.UtcNow;
+            while (!completed)
+            {
+                if ((DateTime.UtcNow - startTime).TotalSeconds > MainThreadTimeoutSeconds)
+                {
+                    throw new TimeoutException($"Tool invocation timed out after {MainThreadTimeoutSeconds} seconds");
+                }
+                Thread.Sleep(10);
+            }
+
+            if (error != null)
+            {
+                if (error is MCPException)
+                {
+                    throw error;
+                }
+                throw new MCPException($"Tool invocation failed: {error.Message}", error, MCPErrorCodes.InternalError);
+            }
+
+            return result;
         }
 
         private Dictionary<string, object> ConvertJObjectToDictionary(JObject jObject)
@@ -759,8 +944,8 @@ namespace UnityMCP.Editor.Core
             Exception error = null;
             bool completed = false;
 
-            // Schedule on Unity main thread
-            EditorApplication.delayCall += () =>
+            // Schedule on Unity main thread using dispatcher that works even when Unity is not in focus
+            MainThreadDispatcher.Enqueue(() =>
             {
                 try
                 {
@@ -774,7 +959,7 @@ namespace UnityMCP.Editor.Core
                 {
                     completed = true;
                 }
-            };
+            });
 
             // Wait for completion
             var startTime = DateTime.UtcNow;
