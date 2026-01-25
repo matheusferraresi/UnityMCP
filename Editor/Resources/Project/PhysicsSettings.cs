@@ -46,7 +46,6 @@ namespace UnityMCP.Editor.Resources.Project
                 queriesHitTriggers = Physics.queriesHitTriggers,
                 queriesHitBackfaces = Physics.queriesHitBackfaces,
                 autoSimulation = Physics.simulationMode.ToString(),
-                autoSyncTransforms = Physics.autoSyncTransforms,
                 reuseCollisionCallbacks = Physics.reuseCollisionCallbacks,
                 interCollisionDistance = Physics.interCollisionDistance,
                 interCollisionStiffness = Physics.interCollisionStiffness,

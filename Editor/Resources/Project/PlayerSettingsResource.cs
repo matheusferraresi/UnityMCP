@@ -25,7 +25,7 @@ namespace UnityMCP.Editor.Resources.Project
             return new
             {
                 identity = GetIdentitySettings(),
-                icons = GetIconSettings(buildTargetGroup),
+                icons = GetIconSettings(namedBuildTarget),
                 resolution = GetResolutionSettings(),
                 splash = GetSplashSettings(),
                 rendering = GetRenderingSettings(namedBuildTarget),
@@ -50,10 +50,11 @@ namespace UnityMCP.Editor.Resources.Project
             };
         }
 
-        private static object GetIconSettings(BuildTargetGroup buildTargetGroup)
+        private static object GetIconSettings(UnityEditor.Build.NamedBuildTarget namedBuildTarget)
         {
-            var defaultIcon = PlayerSettings.GetIconsForTargetGroup(BuildTargetGroup.Unknown)?.FirstOrDefault();
-            var platformIcons = PlayerSettings.GetIconsForTargetGroup(buildTargetGroup);
+            var defaultIcons = PlayerSettings.GetIcons(UnityEditor.Build.NamedBuildTarget.Unknown, UnityEditor.Build.IconKind.Application);
+            var defaultIcon = defaultIcons?.FirstOrDefault();
+            var platformIcons = PlayerSettings.GetIcons(namedBuildTarget, UnityEditor.Build.IconKind.Application);
 
             return new
             {
@@ -74,7 +75,6 @@ namespace UnityMCP.Editor.Resources.Project
                     defaultScreenHeight = PlayerSettings.defaultScreenHeight,
                     fullScreenMode = PlayerSettings.fullScreenMode.ToString(),
                     runInBackground = PlayerSettings.runInBackground,
-                    captureSingleScreen = PlayerSettings.captureSingleScreen,
                     usePlayerLog = PlayerSettings.usePlayerLog,
                     resizableWindow = PlayerSettings.resizableWindow,
                     visibleInBackground = PlayerSettings.visibleInBackground,
@@ -138,7 +138,7 @@ namespace UnityMCP.Editor.Resources.Project
                 gcIncrementalTimeSliceMode = PlayerSettings.gcIncremental,
                 scriptingDefineSymbols = defines,
                 allowUnsafeCode = PlayerSettings.allowUnsafeCode,
-                activeInputHandling = PlayerSettings.GetDefaultScriptingBackend(BuildTargetGroup.Standalone).ToString()
+                activeInputHandling = PlayerSettings.GetScriptingBackend(namedBuildTarget).ToString()
             };
         }
 
@@ -161,7 +161,6 @@ namespace UnityMCP.Editor.Resources.Project
                 scriptingRuntimeVersion = "Latest",
                 apiCompatibilityLevel = PlayerSettings.GetApiCompatibilityLevel(
                     UnityEditor.Build.NamedBuildTarget.Standalone).ToString(),
-                actionOnDotNetUnhandledException = PlayerSettings.actionOnDotNetUnhandledException.ToString(),
                 logObjCUncaughtExceptions = PlayerSettings.logObjCUncaughtExceptions,
                 enableCrashReportAPI = PlayerSettings.enableCrashReportAPI
             };
@@ -180,16 +179,17 @@ namespace UnityMCP.Editor.Resources.Project
             var platformSettings = new System.Collections.Generic.Dictionary<string, object>();
 
             // Windows settings
+            var standaloneIcons = PlayerSettings.GetIcons(UnityEditor.Build.NamedBuildTarget.Standalone, UnityEditor.Build.IconKind.Application);
             platformSettings["windows"] = new
             {
-                applicationIcon = PlayerSettings.GetIconsForTargetGroup(BuildTargetGroup.Standalone)?.FirstOrDefault()?.name,
+                applicationIcon = standaloneIcons?.FirstOrDefault()?.name,
                 showResolutionDialog = "HiddenByDefault"
             };
 
             // Android settings
             platformSettings["android"] = new
             {
-                packageName = PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.Android),
+                packageName = PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.Android),
                 minSdkVersion = PlayerSettings.Android.minSdkVersion.ToString(),
                 targetSdkVersion = PlayerSettings.Android.targetSdkVersion.ToString(),
                 targetArchitectures = PlayerSettings.Android.targetArchitectures.ToString(),
@@ -204,7 +204,7 @@ namespace UnityMCP.Editor.Resources.Project
             // iOS settings
             platformSettings["ios"] = new
             {
-                bundleIdentifier = PlayerSettings.GetApplicationIdentifier(BuildTargetGroup.iOS),
+                bundleIdentifier = PlayerSettings.GetApplicationIdentifier(UnityEditor.Build.NamedBuildTarget.iOS),
                 buildNumber = PlayerSettings.iOS.buildNumber,
                 targetDevice = PlayerSettings.iOS.targetDevice.ToString(),
                 targetOSVersionString = PlayerSettings.iOS.targetOSVersionString,
@@ -213,7 +213,7 @@ namespace UnityMCP.Editor.Resources.Project
                 appleDeveloperTeamID = PlayerSettings.iOS.appleDeveloperTeamID,
                 requiresPersistentWiFi = PlayerSettings.iOS.requiresPersistentWiFi,
                 requiresFullScreen = PlayerSettings.iOS.requiresFullScreen,
-                allowHTTPDownload = PlayerSettings.iOS.allowHTTPDownload,
+                insecureHttpOption = PlayerSettings.insecureHttpOption.ToString(),
                 cameraUsageDescription = PlayerSettings.iOS.cameraUsageDescription,
                 microphoneUsageDescription = PlayerSettings.iOS.microphoneUsageDescription,
                 locationUsageDescription = PlayerSettings.iOS.locationUsageDescription

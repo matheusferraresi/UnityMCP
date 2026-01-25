@@ -164,10 +164,10 @@ namespace UnityMCP.Editor.Resources.Project
                 defaultReflectionResolution = RenderSettings.defaultReflectionResolution,
                 reflectionIntensity = RenderSettings.reflectionIntensity,
                 reflectionBounces = RenderSettings.reflectionBounces,
-                customReflectionTexture = RenderSettings.customReflection != null ? new
+                customReflectionTexture = RenderSettings.customReflectionTexture != null ? new
                 {
-                    name = RenderSettings.customReflection.name,
-                    assetPath = AssetDatabase.GetAssetPath(RenderSettings.customReflection)
+                    name = RenderSettings.customReflectionTexture.name,
+                    assetPath = AssetDatabase.GetAssetPath(RenderSettings.customReflectionTexture)
                 } : null
             };
         }
