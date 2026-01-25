@@ -125,6 +125,35 @@ namespace UnityMCP.Editor.Core
         }
 
         /// <summary>
+        /// Gets all tool definitions grouped by category and ordered.
+        /// </summary>
+        public static IEnumerable<IGrouping<string, ToolDefinition>> GetDefinitionsByCategory()
+        {
+            EnsureInitialized();
+            return _tools.Values
+                .Select(t => (Category: t.Category, Definition: t.ToDefinition()))
+                .GroupBy(t => t.Category, t => t.Definition)
+                .OrderBy(g => GetCategoryOrder(g.Key));
+        }
+
+        private static int GetCategoryOrder(string category)
+        {
+            return category switch
+            {
+                "Scene" => 0,
+                "GameObject" => 1,
+                "Component" => 2,
+                "Asset" => 3,
+                "Console" => 4,
+                "Tests" => 5,
+                "Editor" => 6,
+                "Debug" => 7,
+                "Uncategorized" => 99,
+                _ => 50
+            };
+        }
+
+        /// <summary>
         /// Checks if a tool with the given name exists.
         /// </summary>
         public static bool HasTool(string name)
@@ -219,6 +248,7 @@ namespace UnityMCP.Editor.Core
 
         public string Name => _attribute.Name;
         public string Description => _attribute.Description;
+        public string Category => _attribute.Category;
 
         public ToolInfo(MCPToolAttribute attribute, MethodInfo method)
         {
@@ -264,7 +294,9 @@ namespace UnityMCP.Editor.Core
                 inputSchema.AddProperty(metadata.Name, propertySchema, metadata.Required);
             }
 
-            return new ToolDefinition(_attribute.Name, _attribute.Description, inputSchema);
+            var definition = new ToolDefinition(_attribute.Name, _attribute.Description, inputSchema);
+            definition.category = _attribute.Category;
+            return definition;
         }
 
         private PropertySchema CreatePropertySchema(ParameterMetadata metadata)
