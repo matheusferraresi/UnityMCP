@@ -1,8 +1,8 @@
-name: Build Native Plugins
+name: Build and Release
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -65,11 +65,27 @@ jobs:
           name: linux-plugin
           path: NativeProxy~/libUnityMCPProxy.so
 
-  publish-release:
+  release:
     needs: [build-windows, build-macos, build-linux]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      - name: Generate version
+        id: version
+        run: |
+          VERSION=$(date +'%Y.%m.%d')
+          # Add build number if release already exists for today
+          if gh release view "$VERSION" &>/dev/null; then
+            BUILD=1
+            while gh release view "${VERSION}.${BUILD}" &>/dev/null; do
+              BUILD=$((BUILD + 1))
+            done
+            VERSION="${VERSION}.${BUILD}"
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Create Plugins directories
         run: |
@@ -95,12 +111,32 @@ jobs:
           name: linux-plugin
           path: Plugins/Linux/x86_64/
 
-      - name: Commit to release branch
+      - name: Update package.json version
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+          sed -i 's/"version": "[^"]*"/"version": "${{ steps.version.outputs.version }}"/' package.json
 
-          git checkout -B release
-          git add Plugins/
-          git commit -m "Build native plugins from ${{ github.sha }}"
-          git push origin release --force
+      - name: Create tarball
+        run: |
+          tar -czvf UnityMCP-${{ steps.version.outputs.version }}.tgz \
+            --exclude='.git' \
+            --exclude='.github' \
+            --exclude='NativeProxy~/*.dll' \
+            --exclude='NativeProxy~/*.so' \
+            --exclude='NativeProxy~/*.bundle' \
+            .
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.version }}
+          name: ${{ steps.version.outputs.version }}
+          body: |
+            ## Installation
+
+            Add via Unity Package Manager:
+            ```
+            https://github.com/Bluepuff71/UnityMCP/releases/download/${{ steps.version.outputs.version }}/UnityMCP-${{ steps.version.outputs.version }}.tgz
+            ```
+
+            Or download the `.tgz` file and install manually.
+          files: UnityMCP-${{ steps.version.outputs.version }}.tgz
