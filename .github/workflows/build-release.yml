@@ -120,6 +120,10 @@ jobs:
           tar -czvf UnityMCP-${{ steps.version.outputs.version }}.tgz \
             --exclude='.git' \
             --exclude='.github' \
+            --exclude='*.tgz' \
+            --exclude='docs' \
+            --exclude='docs.meta' \
+            --exclude='Tests~' \
             --exclude='NativeProxy~/*.dll' \
             --exclude='NativeProxy~/*.so' \
             --exclude='NativeProxy~/*.bundle' \
