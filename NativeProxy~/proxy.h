@@ -66,14 +66,6 @@ EXPORT void RegisterCallback(RequestCallback callback);
 EXPORT void SendResponse(const char* json);
 
 /*
- * Poll the event manager to process network events.
- * Must be called periodically from Unity's main thread.
- *
- * @param timeout_ms Maximum time to wait for events in milliseconds
- */
-EXPORT void PollEvents(int timeout_ms);
-
-/*
  * Check if the server is currently running.
  *
  * @return 1 if running, 0 if not

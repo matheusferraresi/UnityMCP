@@ -16,6 +16,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+#ifdef _WIN32
+    #include <windows.h>
+    typedef HANDLE ThreadHandle;
+#else
+    #include <pthread.h>
+    typedef pthread_t ThreadHandle;
+#endif
+
 /*
  * Internal state
  */
@@ -24,25 +32,132 @@ static struct mg_connection* s_listener = NULL;
 static volatile int s_running = 0;
 static volatile int s_callback_valid = 0;
 static RequestCallback s_csharp_callback = NULL;
+static ThreadHandle s_server_thread;
 
 /* Response buffer for synchronous C# callback */
 static char s_response_buffer[PROXY_MAX_RESPONSE_SIZE];
 static volatile int s_has_response = 0;
 
 /*
- * Standard JSON-RPC error responses
+ * Buffer for building dynamic error responses with request ID
  */
-static const char* RECOMPILING_RESPONSE =
-    "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,"
-    "\"message\":\"Unity is recompiling. Please retry in a moment.\"},\"id\":null}";
+static char s_error_response_buffer[1024];
 
-static const char* TIMEOUT_RESPONSE =
-    "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,"
-    "\"message\":\"Request timed out.\"},\"id\":null}";
+/*
+ * Extract the "id" field from a JSON-RPC request.
+ * Returns a pointer to a static buffer containing the id value (including quotes for strings),
+ * or "null" if not found or on parse error.
+ */
+static char s_id_buffer[256];
+static const char* ExtractJsonRpcId(const char* json, size_t json_len)
+{
+    /* Simple JSON parser to find "id" field */
+    const char* id_key = "\"id\"";
+    const char* pos = json;
+    const char* end = json + json_len;
 
-static const char* INTERNAL_ERROR_RESPONSE =
-    "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32603,"
-    "\"message\":\"Internal error processing request.\"},\"id\":null}";
+    while (pos < end)
+    {
+        /* Find "id" key */
+        const char* found = strstr(pos, id_key);
+        if (found == NULL || found >= end)
+        {
+            return "null";
+        }
+
+        /* Move past the key */
+        pos = found + 4; /* strlen("\"id\"") */
+
+        /* Skip whitespace */
+        while (pos < end && (*pos == ' ' || *pos == '\t' || *pos == '\n' || *pos == '\r'))
+        {
+            pos++;
+        }
+
+        /* Expect colon */
+        if (pos >= end || *pos != ':')
+        {
+            continue; /* Not the right "id", keep searching */
+        }
+        pos++;
+
+        /* Skip whitespace */
+        while (pos < end && (*pos == ' ' || *pos == '\t' || *pos == '\n' || *pos == '\r'))
+        {
+            pos++;
+        }
+
+        if (pos >= end)
+        {
+            return "null";
+        }
+
+        /* Parse the value */
+        if (*pos == '"')
+        {
+            /* String value - find the closing quote */
+            const char* start = pos;
+            pos++;
+            while (pos < end && *pos != '"')
+            {
+                if (*pos == '\\' && pos + 1 < end)
+                {
+                    pos++; /* Skip escaped character */
+                }
+                pos++;
+            }
+            if (pos < end)
+            {
+                pos++; /* Include closing quote */
+                size_t len = pos - start;
+                if (len >= sizeof(s_id_buffer))
+                {
+                    len = sizeof(s_id_buffer) - 1;
+                }
+                memcpy(s_id_buffer, start, len);
+                s_id_buffer[len] = '\0';
+                return s_id_buffer;
+            }
+        }
+        else if (*pos == '-' || (*pos >= '0' && *pos <= '9'))
+        {
+            /* Number value */
+            const char* start = pos;
+            while (pos < end && ((*pos >= '0' && *pos <= '9') || *pos == '-' || *pos == '.' || *pos == 'e' || *pos == 'E' || *pos == '+'))
+            {
+                pos++;
+            }
+            size_t len = pos - start;
+            if (len >= sizeof(s_id_buffer))
+            {
+                len = sizeof(s_id_buffer) - 1;
+            }
+            memcpy(s_id_buffer, start, len);
+            s_id_buffer[len] = '\0';
+            return s_id_buffer;
+        }
+        else if (strncmp(pos, "null", 4) == 0)
+        {
+            return "null";
+        }
+
+        /* Unknown value type, return null */
+        return "null";
+    }
+
+    return "null";
+}
+
+/*
+ * Build a JSON-RPC error response with the given error code, message, and request ID.
+ */
+static const char* BuildErrorResponse(int code, const char* message, const char* id)
+{
+    snprintf(s_error_response_buffer, sizeof(s_error_response_buffer),
+        "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":%d,\"message\":\"%s\"},\"id\":%s}",
+        code, message, id);
+    return s_error_response_buffer;
+}
 
 /*
  * CORS headers for all responses
@@ -54,12 +169,38 @@ static const char* CORS_HEADERS =
     "Access-Control-Allow-Headers: Content-Type\r\n";
 
 /*
+ * Server thread function.
+ * Polls the Mongoose event manager in a loop until s_running is cleared.
+ */
+#ifdef _WIN32
+static DWORD WINAPI ServerThreadFunc(LPVOID param)
+{
+    (void)param;
+    while (s_running)
+    {
+        mg_mgr_poll(&s_mgr, 10);
+    }
+    return 0;
+}
+#else
+static void* ServerThreadFunc(void* param)
+{
+    (void)param;
+    while (s_running)
+    {
+        mg_mgr_poll(&s_mgr, 10);
+    }
+    return NULL;
+}
+#endif
+
+/*
  * Handle an incoming HTTP request.
  *
  * This function processes the HTTP request:
  * 1. CORS preflight (OPTIONS) -> 204 No Content
  * 2. Non-POST methods -> 405 Method Not Allowed
- * 3. If callback not valid -> Return "recompiling" response
+ * 3. If callback not valid -> Return "recompiling" response with request ID
  * 4. Otherwise -> Call C# callback and wait for response
  */
 static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_message* http_message)
@@ -81,13 +222,6 @@ static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_m
         return;
     }
 
-    /* Check if C# callback is available */
-    if (!s_callback_valid || s_csharp_callback == NULL)
-    {
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s", RECOMPILING_RESPONSE);
-        return;
-    }
-
     /* Extract request body with null termination */
     size_t body_length = http_message->body.len;
     if (body_length == 0)
@@ -101,60 +235,49 @@ static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_m
     char* request_body = (char*)malloc(body_length + 1);
     if (request_body == NULL)
     {
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s", INTERNAL_ERROR_RESPONSE);
+        mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+            BuildErrorResponse(-32603, "Internal error: memory allocation failed", "null"));
         return;
     }
 
     memcpy(request_body, http_message->body.buf, body_length);
     request_body[body_length] = '\0';
 
+    /* Extract the request ID for use in error responses */
+    const char* request_id = ExtractJsonRpcId(request_body, body_length);
+
+    /* Check if C# callback is available */
+    if (!s_callback_valid || s_csharp_callback == NULL)
+    {
+        mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+            BuildErrorResponse(-32000, "Unity is recompiling. Please retry in a moment.", request_id));
+        free(request_body);
+        return;
+    }
+
     /* Clear response state and invoke C# callback */
     s_has_response = 0;
     s_response_buffer[0] = '\0';
 
     /*
-     * Call the C# callback. This is a synchronous call from native to managed code.
-     * C# must call SendResponse() before returning from the callback.
+     * Call the C# callback synchronously from the server thread.
+     * C# handles main thread dispatch internally and calls SendResponse() before returning.
      */
     s_csharp_callback(request_body);
 
     free(request_body);
     request_body = NULL;
 
-    /*
-     * Wait for the response with timeout.
-     * The callback should have set s_has_response = 1 via SendResponse().
-     * We poll the event manager while waiting to keep the server responsive.
-     */
-    int waited_ms = 0;
-    const int poll_interval_ms = 10;
-
-    while (!s_has_response && waited_ms < PROXY_REQUEST_TIMEOUT_MS)
-    {
-        mg_mgr_poll(&s_mgr, poll_interval_ms);
-        waited_ms += poll_interval_ms;
-
-        /* Re-check callback validity in case domain reload started during wait */
-        if (!s_callback_valid)
-        {
-            break;
-        }
-    }
-
-    /* Send the response */
+    /* Send the response - callback should have set it via SendResponse() */
     if (s_has_response && s_response_buffer[0] != '\0')
     {
         mg_http_reply(connection, 200, CORS_HEADERS, "%s", s_response_buffer);
     }
-    else if (!s_callback_valid)
-    {
-        /* Domain reload happened while waiting */
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s", RECOMPILING_RESPONSE);
-    }
     else
     {
-        /* Timeout or empty response */
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s", TIMEOUT_RESPONSE);
+        /* No response received - callback failed or was cleared */
+        mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+            BuildErrorResponse(-32603, "Internal error processing request.", request_id));
     }
 }
 
@@ -195,7 +318,27 @@ EXPORT int StartServer(int port)
         return -1;  /* Failed to bind to port */
     }
 
+    /* Set running flag before creating thread */
     s_running = 1;
+
+    /* Create the server thread */
+#ifdef _WIN32
+    s_server_thread = CreateThread(NULL, 0, ServerThreadFunc, NULL, 0, NULL);
+    if (s_server_thread == NULL)
+    {
+        s_running = 0;
+        mg_mgr_free(&s_mgr);
+        return -1;  /* Failed to create thread */
+    }
+#else
+    if (pthread_create(&s_server_thread, NULL, ServerThreadFunc, NULL) != 0)
+    {
+        s_running = 0;
+        mg_mgr_free(&s_mgr);
+        return -1;  /* Failed to create thread */
+    }
+#endif
+
     return 0;
 }
 
@@ -209,7 +352,21 @@ EXPORT void StopServer(void)
         return;
     }
 
+    /* Signal the thread to stop */
     s_running = 0;
+
+    /* Wait for the server thread to exit */
+#ifdef _WIN32
+    if (s_server_thread != NULL)
+    {
+        WaitForSingleObject(s_server_thread, INFINITE);
+        CloseHandle(s_server_thread);
+        s_server_thread = NULL;
+    }
+#else
+    pthread_join(s_server_thread, NULL);
+#endif
+
     s_listener = NULL;
     s_callback_valid = 0;
     s_csharp_callback = NULL;
@@ -253,19 +410,6 @@ EXPORT void SendResponse(const char* json)
     }
 
     s_has_response = 1;
-}
-
-/*
- * Poll the event manager to process network events.
- */
-EXPORT void PollEvents(int timeout_ms)
-{
-    if (!s_running)
-    {
-        return;
-    }
-
-    mg_mgr_poll(&s_mgr, timeout_ms);
 }
 
 /*

@@ -794,48 +794,17 @@ namespace UnityMCP.Editor.Core
         /// <summary>
         /// Synchronous version of InvokeToolOnMainThreadAsync for use with NativeProxy.
         /// This method blocks the calling thread until the tool execution completes on Unity's main thread.
+        /// Uses DispatchAndWait for thread-safe main thread dispatch.
         /// </summary>
         private object InvokeToolOnMainThread(string toolName, JObject arguments)
         {
-            object result = null;
-            Exception error = null;
-            using var completedEvent = new ManualResetEventSlim(false);
-
-            // Schedule on Unity main thread using dispatcher that works even when Unity is not in focus
-            MainThreadDispatcher.Enqueue(() =>
-            {
-                try
-                {
-                    var argumentsDictionary = ConvertJObjectToDictionary(arguments);
-                    result = ToolRegistry.Invoke(toolName, argumentsDictionary);
-                }
-                catch (Exception exception)
-                {
-                    error = exception;
-                }
-                finally
-                {
-                    completedEvent.Set();
-                }
-            });
-
-            // Block and wait for completion (safe since we're on a native/background thread, not the main thread)
             int timeoutMilliseconds = MainThreadTimeoutSeconds * 1000;
-            if (!completedEvent.Wait(timeoutMilliseconds))
-            {
-                throw new TimeoutException($"Tool invocation timed out after {MainThreadTimeoutSeconds} seconds");
-            }
 
-            if (error != null)
+            return MainThreadDispatcher.DispatchAndWait(() =>
             {
-                if (error is MCPException)
-                {
-                    throw error;
-                }
-                throw new MCPException($"Tool invocation failed: {error.Message}", error, MCPErrorCodes.InternalError);
-            }
-
-            return result;
+                var argumentsDictionary = ConvertJObjectToDictionary(arguments);
+                return ToolRegistry.Invoke(toolName, argumentsDictionary);
+            }, timeoutMilliseconds);
         }
 
         private Dictionary<string, object> ConvertJObjectToDictionary(JObject jObject)
@@ -947,44 +916,12 @@ namespace UnityMCP.Editor.Core
 
         private ResourceContent InvokeResourceOnMainThread(string resourceUri)
         {
-            ResourceContent result = null;
-            Exception error = null;
-            using var completedEvent = new ManualResetEventSlim(false);
-
-            // Schedule on Unity main thread using dispatcher that works even when Unity is not in focus
-            MainThreadDispatcher.Enqueue(() =>
-            {
-                try
-                {
-                    result = ResourceRegistry.Invoke(resourceUri);
-                }
-                catch (Exception exception)
-                {
-                    error = exception;
-                }
-                finally
-                {
-                    completedEvent.Set();
-                }
-            });
-
-            // Block and wait for completion (safe since we're on a native/background thread, not the main thread)
             int timeoutMilliseconds = MainThreadTimeoutSeconds * 1000;
-            if (!completedEvent.Wait(timeoutMilliseconds))
-            {
-                throw new TimeoutException($"Resource invocation timed out after {MainThreadTimeoutSeconds} seconds");
-            }
 
-            if (error != null)
+            return MainThreadDispatcher.DispatchAndWait(() =>
             {
-                if (error is MCPException mcpException)
-                {
-                    throw mcpException;
-                }
-                throw new MCPException($"Resource invocation failed: {error.Message}", error, MCPErrorCodes.InternalError);
-            }
-
-            return result;
+                return ResourceRegistry.Invoke(resourceUri);
+            }, timeoutMilliseconds);
         }
 
         #endregion

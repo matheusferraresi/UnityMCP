@@ -1,46 +1,155 @@
 # Unity MCP
 
-Pure C# MCP (Model Context Protocol) server for Unity 6 that enables AI assistants like Claude to interact with the Unity Editor.
+Model Context Protocol server for Unity Editor. Enables AI assistants like Claude to directly manipulate Unity projects.
 
-## Features
+## Why Use This?
 
-- Attribute-based tool registration with `[MCPTool]` and `[MCPParam]`
-- HTTP server on localhost:8080
-- Editor-only (designed for development workflows)
-- Extensible architecture for custom tools
+- **Zero telemetry** - Completely private. No data collection.
+- **40+ built-in tools** - Create GameObjects, run tests, build projects, manipulate scenes.
+- **Simple extension API** - Add custom tools with a single attribute.
 
 ## Requirements
 
-- Unity 6 (6000.0 or later)
+- Unity 6 or later
+- Any MCP client: Claude Code, Claude Desktop, Codex, Cursor, or others
 
 ## Installation
 
-### Via Git URL (Recommended)
-
-1. Open Unity Package Manager (Window > Package Manager)
-2. Click the `+` button in the top-left corner
-3. Select "Add package from git URL..."
+1. Open Unity Package Manager
+2. Click the `+` button
+3. Select "Add package from git URL"
 4. Enter: `https://github.com/emeryporter/UnityMCP.git`
-5. Click "Add"
 
-### Via Local Path
+## Setup
 
-1. Clone or download this repository to your local machine
-2. Open Unity Package Manager (Window > Package Manager)
-3. Click the `+` button in the top-left corner
-4. Select "Add package from disk..."
-5. Navigate to the `package.json` file in the UnityMCP folder
-6. Click "Open"
+### Claude Code
 
-### Manual Installation
+```bash
+claude mcp add unity-mcp --transport http http://localhost:8080/
+```
 
-1. Clone or download this repository
-2. Copy the entire `UnityMCP` folder into your project's `Packages` directory
+### Claude Desktop
 
-## Usage
+Add this to your Claude Desktop configuration file:
 
-Once installed, the MCP server will be available in the Unity Editor. Configure your AI assistant (e.g., Claude) to connect to `http://localhost:8080`.
+**macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+**Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
+
+```json
+{
+  "mcpServers": {
+    "unity-mcp": {
+      "command": "npx",
+      "args": ["-y", "mcp-remote", "http://localhost:8080/"]
+    }
+  }
+}
+```
+
+Restart Claude Desktop after saving.
+
+### Other MCP Clients (Codex, Cursor, etc.)
+
+Unity MCP runs an HTTP server at `http://localhost:8080/`. Any MCP client with HTTP transport support can connect directly. For stdio-only clients, use the mcp-remote bridge as shown above.
+
+*Note: Configurations for clients other than Claude Code have not been tested. Open a PR!*
+
+## How It Works
+
+Unity MCP uses a native C plugin to maintain an HTTP server on a background thread, independent of Unity's C# scripting domain. This architecture ensures the MCP connection remains alive during script recompilation.
+
+```
+┌─────────────────┐
+│  MCP Client     │
+│  (Claude, etc.) │
+└────────┬────────┘
+         │ HTTP
+         ▼
+┌─────────────────────────────────────┐
+│  Native Plugin (C)                  │
+│  - HTTP server on background thread │
+│  - Survives domain reloads          │
+└────────┬────────────────────────────┘
+         │
+         ▼
+┌─────────────────────────────────────┐
+│  Unity C# (main thread)             │
+│  - Executes tools when available    │
+│  - Returns "recompiling" during     │
+│    domain reload                    │
+└─────────────────────────────────────┘
+```
+
+When Unity recompiles scripts, the C# domain unloads temporarily. During this time, the native plugin continues accepting HTTP requests but returns a "Unity is recompiling" error instead of disconnecting. Once recompilation completes, requests are forwarded to Unity's main thread for execution.
+
+## Adding Custom Tools
+
+Create a static method and mark it with `[MCPTool]`:
+
+```csharp
+using UnityMCP.Editor;
+using UnityEngine;
+
+public static class MyCustomTools
+{
+    [MCPTool("hello_world", "Says hello to the specified name")]
+    public static string SayHello(
+        [MCPParam("name", "Name to greet", required: true)] string name)
+    {
+        return $"Hello, {name}!";
+    }
+
+    [MCPTool("create_cube_at", "Creates a cube at specified position")]
+    public static object CreateCube(
+        [MCPParam("x", "X coordinate", required: true)] float x,
+        [MCPParam("y", "Y coordinate", required: true)] float y,
+        [MCPParam("z", "Z coordinate", required: true)] float z)
+    {
+        GameObject cube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        cube.transform.position = new Vector3(x, y, z);
+        cube.name = "Custom Cube";
+
+        return new
+        {
+            success = true,
+            message = $"Created cube at ({x}, {y}, {z})",
+            instanceID = cube.GetInstanceID()
+        };
+    }
+}
+```
+
+Tools are automatically discovered on domain reload. No registration needed.
+
+## Adding Custom Resources
+
+Resources expose read-only data to AI assistants. Use `[MCPResource]`:
+
+```csharp
+using UnityMCP.Editor;
+using UnityEngine;
+
+public static class MyCustomResources
+{
+    [MCPResource("unity://player/stats", "Current player statistics")]
+    public static object GetPlayerStats()
+    {
+        var player = GameObject.Find("Player");
+        if (player == null)
+            return new { error = "Player not found" };
+
+        return new
+        {
+            position = player.transform.position,
+            health = player.GetComponent<Health>()?.CurrentHealth ?? 0,
+            isGrounded = player.GetComponent<CharacterController>()?.isGrounded ?? false
+        };
+    }
+}
+```
+
+Resources use URI patterns (e.g., `unity://player/stats`) and are read via `resources/read`.
 
 ## License
 
-MIT License - See [LICENSE](LICENSE) for details.
+GPLv2 - see LICENSE file for details.

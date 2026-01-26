@@ -37,9 +37,6 @@ namespace UnityMCP.Editor.Core
         [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
         private static extern void SendResponse([MarshalAs(UnmanagedType.LPStr)] string json);
 
-        [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
-        private static extern void PollEvents();
-
         #endregion
 
         /// <summary>
@@ -57,6 +54,41 @@ namespace UnityMCP.Editor.Core
         /// Gets whether the native proxy is currently active.
         /// </summary>
         public static bool IsInitialized => s_initialized;
+
+        /// <summary>
+        /// Starts the native proxy server.
+        /// </summary>
+        public static void Start()
+        {
+            Initialize();
+        }
+
+        /// <summary>
+        /// Stops the native proxy server and cleans up resources.
+        /// </summary>
+        public static void Stop()
+        {
+            if (!s_initialized)
+            {
+                return;
+            }
+
+            AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeReload;
+            EditorApplication.quitting -= OnQuit;
+
+            try
+            {
+                RegisterCallback(null);
+                StopServer();
+                Debug.Log("[NativeProxy] Native MCP proxy stopped");
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[NativeProxy] Error during stop: {exception.Message}");
+            }
+
+            s_initialized = false;
+        }
 
         /// <summary>
         /// Static constructor called automatically by Unity due to [InitializeOnLoad].
@@ -80,11 +112,13 @@ namespace UnityMCP.Editor.Core
 
             try
             {
-                // Start server (only does something on first call - server persists across domain reloads)
+                // Start server - returns 0 on fresh start, 1 if already running (survives domain reload)
                 int result = StartServer(DEFAULT_PORT);
-                if (result != 0)
+
+                // Result codes: 0 = started fresh, 1 = already running, -1 = failed to bind
+                if (result < 0)
                 {
-                    Debug.LogWarning("[NativeProxy] Failed to start native server, falling back to managed server.");
+                    Debug.LogWarning($"[NativeProxy] Failed to start native server (result={result}), falling back to managed server.");
                     return;
                 }
 
@@ -96,18 +130,15 @@ namespace UnityMCP.Editor.Core
                 AssemblyReloadEvents.beforeAssemblyReload += OnBeforeReload;
                 EditorApplication.quitting += OnQuit;
 
-                // Poll the native server on every editor update to process HTTP requests
-                EditorApplication.update += OnUpdate;
-
                 // Enable running in background so server responds when Unity is not focused
                 Application.runInBackground = true;
 
                 s_initialized = true;
                 Debug.Log($"[NativeProxy] Native MCP proxy initialized on port {DEFAULT_PORT}");
             }
-            catch (DllNotFoundException)
+            catch (DllNotFoundException dllException)
             {
-                Debug.LogWarning("[NativeProxy] Native plugin not found, falling back to managed server.");
+                Debug.LogWarning($"[NativeProxy] Native plugin not found: {dllException.Message}. Falling back to managed server.");
             }
             catch (EntryPointNotFoundException entryPointException)
             {
@@ -115,30 +146,8 @@ namespace UnityMCP.Editor.Core
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"[NativeProxy] Failed to initialize native proxy: {exception.Message}. Falling back to managed server.");
-            }
-        }
-
-        /// <summary>
-        /// Called every editor update to poll the native server for incoming HTTP requests.
-        /// This is required because Mongoose is event-driven and needs periodic polling.
-        /// </summary>
-        private static void OnUpdate()
-        {
-            if (!s_initialized)
-            {
-                return;
-            }
-
-            try
-            {
-                PollEvents();
-            }
-            catch (Exception exception)
-            {
-                Debug.LogError($"[NativeProxy] Error polling events: {exception.Message}");
-                s_initialized = false;
-                EditorApplication.update -= OnUpdate;
+                Debug.LogWarning($"[NativeProxy] Failed to initialize native proxy: {exception.GetType().Name}: {exception.Message}. Falling back to managed server.");
+                Debug.LogException(exception);
             }
         }
 
@@ -148,9 +157,7 @@ namespace UnityMCP.Editor.Core
         /// </summary>
         private static void OnBeforeReload()
         {
-            // Stop polling and unregister callback before domain unloads
-            EditorApplication.update -= OnUpdate;
-
+            // Unregister callback before domain unloads to prevent native code calling invalid C# code
             try
             {
                 RegisterCallback(null);
@@ -167,8 +174,6 @@ namespace UnityMCP.Editor.Core
         /// </summary>
         private static void OnQuit()
         {
-            EditorApplication.update -= OnUpdate;
-
             try
             {
                 RegisterCallback(null);
