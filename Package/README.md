@@ -15,13 +15,21 @@ Model Context Protocol (MCP) server that enables AI assistants like Claude, Code
 
 ## Installation
 
-1. Download the [latest release](https://github.com/Bluepuff71/UnityMCP/releases/latest)
-1. Open Unity Package Manager
-2. Click the `+` button
-3. Select "Add package from tarball"
-4. Select the downloaded release!
+1. Open Unity Package Manager (Window → Package Manager)
+2. Click `+` → "Add package from git URL"
+3. Enter:
+   ```
+   https://github.com/Bluepuff71/UnityMCP.git?path=/Package
+   ```
 
-Example: `https://github.com/Bluepuff71/UnityMCP/releases/download/2025.01.25/UnityMCP-2025.01.25.tgz`
+### Pinning a Version
+
+To install a specific version, append `#version`:
+```
+https://github.com/Bluepuff71/UnityMCP.git?path=/Package#2026.01.26
+```
+
+See [Releases](https://github.com/Bluepuff71/UnityMCP/releases) for available versions.
 
 ## Setup
 
