@@ -114,10 +114,14 @@ namespace UnityMCP.Editor.UI
             {
                 if (isCurrentlyRunning)
                 {
+                    // Stop both native proxy and managed server
+                    NativeProxy.Stop();
                     MCPServer.Instance.Stop();
                 }
                 else
                 {
+                    // Try native proxy first, then fall back to managed server
+                    NativeProxy.Start();
                     MCPServer.Instance.Start();
                 }
             }

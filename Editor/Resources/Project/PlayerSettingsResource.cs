@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
@@ -25,7 +26,7 @@ namespace UnityMCP.Editor.Resources.Project
             return new
             {
                 identity = GetIdentitySettings(),
-                icons = GetIconSettings(buildTargetGroup),
+                icons = GetIconSettings(namedBuildTarget),
                 resolution = GetResolutionSettings(),
                 splash = GetSplashSettings(),
                 rendering = GetRenderingSettings(namedBuildTarget),
@@ -33,7 +34,7 @@ namespace UnityMCP.Editor.Resources.Project
                 optimization = GetOptimizationSettings(namedBuildTarget),
                 configuration = GetConfigurationSettings(),
                 publishing = GetPublishingSettings(),
-                platformSpecific = GetPlatformSpecificSettings(activeBuildTarget)
+                platformSpecific = GetPlatformSpecificSettings(activeBuildTarget, namedBuildTarget)
             };
         }
 
@@ -50,18 +51,52 @@ namespace UnityMCP.Editor.Resources.Project
             };
         }
 
-        private static object GetIconSettings(BuildTargetGroup buildTargetGroup)
+        private static object GetIconSettings(UnityEditor.Build.NamedBuildTarget namedBuildTarget)
         {
-#pragma warning disable CS0618 // Type or member is obsolete
-            var defaultIcon = PlayerSettings.GetIconsForTargetGroup(BuildTargetGroup.Unknown)?.FirstOrDefault();
-            var platformIcons = PlayerSettings.GetIconsForTargetGroup(buildTargetGroup);
-#pragma warning restore CS0618
+            var iconKinds = PlayerSettings.GetSupportedIconKinds(namedBuildTarget);
+            var iconsByKind = new List<object>();
+            var allIconTextures = new List<string>();
+
+            foreach (var iconKind in iconKinds)
+            {
+                var platformIcons = PlayerSettings.GetPlatformIcons(namedBuildTarget, iconKind);
+                var iconInfos = new List<object>();
+
+                foreach (var platformIcon in platformIcons)
+                {
+                    var textures = platformIcon.GetTextures();
+                    var textureNames = textures
+                        .Where(texture => texture != null)
+                        .Select(texture => texture.name)
+                        .ToArray();
+
+                    if (textureNames.Length > 0)
+                    {
+                        iconInfos.Add(new
+                        {
+                            width = platformIcon.width,
+                            height = platformIcon.height,
+                            textures = textureNames
+                        });
+                        allIconTextures.AddRange(textureNames);
+                    }
+                }
+
+                if (iconInfos.Count > 0)
+                {
+                    iconsByKind.Add(new
+                    {
+                        kind = iconKind.ToString(),
+                        icons = iconInfos.ToArray()
+                    });
+                }
+            }
 
             return new
             {
-                defaultIcon = defaultIcon != null ? defaultIcon.name : null,
-                platformIconCount = platformIcons?.Length ?? 0,
-                platformIcons = platformIcons?.Select(icon => icon != null ? icon.name : null).ToArray()
+                platformIconCount = allIconTextures.Count,
+                iconKinds = iconsByKind.ToArray(),
+                allTextures = allIconTextures.Distinct().ToArray()
             };
         }
 
@@ -175,17 +210,33 @@ namespace UnityMCP.Editor.Resources.Project
             };
         }
 
-        private static object GetPlatformSpecificSettings(BuildTarget activeBuildTarget)
+        private static object GetPlatformSpecificSettings(BuildTarget activeBuildTarget, UnityEditor.Build.NamedBuildTarget namedBuildTarget)
         {
-            var platformSettings = new System.Collections.Generic.Dictionary<string, object>();
+            var platformSettings = new Dictionary<string, object>();
 
-            // Windows settings
-#pragma warning disable CS0618 // Type or member is obsolete
-            var standaloneIcons = PlayerSettings.GetIconsForTargetGroup(BuildTargetGroup.Standalone);
-#pragma warning restore CS0618
+            // Windows settings - get first available icon from supported icon kinds
+            string windowsIconName = null;
+            var standaloneTarget = UnityEditor.Build.NamedBuildTarget.Standalone;
+            var standaloneIconKinds = PlayerSettings.GetSupportedIconKinds(standaloneTarget);
+            foreach (var iconKind in standaloneIconKinds)
+            {
+                var icons = PlayerSettings.GetPlatformIcons(standaloneTarget, iconKind);
+                foreach (var icon in icons)
+                {
+                    var textures = icon.GetTextures();
+                    var firstTexture = textures.FirstOrDefault(t => t != null);
+                    if (firstTexture != null)
+                    {
+                        windowsIconName = firstTexture.name;
+                        break;
+                    }
+                }
+                if (windowsIconName != null) break;
+            }
+
             platformSettings["windows"] = new
             {
-                applicationIcon = standaloneIcons?.FirstOrDefault()?.name,
+                applicationIcon = windowsIconName,
                 showResolutionDialog = "HiddenByDefault"
             };
 
