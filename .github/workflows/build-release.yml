@@ -1,0 +1,103 @@
+name: Build Native Plugins
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Windows DLL
+        shell: bash
+        run: |
+          cd NativeProxy~
+          gcc -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
+            proxy.c mongoose.c \
+            -o UnityMCPProxy.dll \
+            -lws2_32
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-plugin
+          path: NativeProxy~/UnityMCPProxy.dll
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build macOS Bundle (Universal)
+        run: |
+          cd NativeProxy~
+          clang -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
+            proxy.c mongoose.c \
+            -o UnityMCPProxy.bundle \
+            -arch arm64 -arch x86_64 \
+            -framework CoreFoundation -framework Security
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-plugin
+          path: NativeProxy~/UnityMCPProxy.bundle
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Linux Shared Library
+        run: |
+          cd NativeProxy~
+          gcc -shared -fPIC -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
+            proxy.c mongoose.c \
+            -o libUnityMCPProxy.so \
+            -lpthread
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-plugin
+          path: NativeProxy~/libUnityMCPProxy.so
+
+  publish-release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Create Plugins directories
+        run: |
+          mkdir -p Plugins/Windows/x86_64
+          mkdir -p Plugins/macOS
+          mkdir -p Plugins/Linux/x86_64
+
+      - name: Download Windows artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: windows-plugin
+          path: Plugins/Windows/x86_64/
+
+      - name: Download macOS artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: macos-plugin
+          path: Plugins/macOS/
+
+      - name: Download Linux artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: linux-plugin
+          path: Plugins/Linux/x86_64/
+
+      - name: Commit to release branch
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -B release
+          git add Plugins/
+          git commit -m "Build native plugins from ${{ github.sha }}"
+          git push origin release --force

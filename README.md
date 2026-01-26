@@ -18,7 +18,9 @@ Model Context Protocol server for Unity Editor. Enables AI assistants like Claud
 1. Open Unity Package Manager
 2. Click the `+` button
 3. Select "Add package from git URL"
-4. Enter: `https://github.com/emeryporter/UnityMCP.git`
+4. Enter: `https://github.com/emeryporter/UnityMCP.git#release`
+
+The `#release` branch contains pre-built native plugins for all platforms.
 
 ## Setup
 
@@ -152,4 +154,4 @@ Resources use URI patterns (e.g., `unity://player/stats`) and are read via `reso
 
 ## License
 
-GPLv2 - see LICENSE file for details.
+GPLv3 - see LICENSE file for details.
