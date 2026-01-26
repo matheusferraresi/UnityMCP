@@ -15,10 +15,11 @@ Model Context Protocol (MCP) server that enables AI assistants like Claude, Code
 
 ## Installation
 
+1. Download the [latest release](https://github.com/Bluepuff71/UnityMCP/releases/latest)
 1. Open Unity Package Manager
 2. Click the `+` button
-3. Select "Add package from tarball URL"
-4. Enter the URL from the [latest release](https://github.com/Bluepuff71/UnityMCP/releases/latest)
+3. Select "Add package from tarball"
+4. Select the downloaded release!
 
 Example: `https://github.com/Bluepuff71/UnityMCP/releases/download/2025.01.25/UnityMCP-2025.01.25.tgz`
 
@@ -35,6 +36,7 @@ claude mcp add unity-mcp --transport http http://localhost:8080/
 Add this to your Claude Desktop configuration file:
 
 **macOS**: `~/Library/Application Support/Claude/claude_desktop_config.json`
+
 **Windows**: `%APPDATA%\Claude\claude_desktop_config.json`
 
 ```json
