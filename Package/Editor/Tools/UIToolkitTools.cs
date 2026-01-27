@@ -484,6 +484,8 @@ namespace UnityMCP.Editor.Tools
                 ussClasses.Add(cssClass);
             }
 
+            string elementText = GetElementText(element);
+
             var elementData = new Dictionary<string, object>
             {
                 { "name", element.name },
@@ -491,6 +493,12 @@ namespace UnityMCP.Editor.Tools
                 { "ussClasses", ussClasses },
                 { "childCount", element.childCount }
             };
+
+            // Only include text if present
+            if (elementText != null)
+            {
+                elementData["text"] = elementText;
+            }
 
             // Add children if within depth limit
             if (currentDepth < maxDepth && element.childCount > 0)
