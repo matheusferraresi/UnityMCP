@@ -622,6 +622,578 @@ namespace UnityMCP.Editor.Tools
 
         #endregion
 
+        #region Set Value Tool
+
+        /// <summary>
+        /// Sets the value of an input field or control in an EditorWindow.
+        /// </summary>
+        [MCPTool("uitoolkit_set_value", "Set the value of an input field or control", Category = "UIToolkit")]
+        public static object SetValue(
+            [MCPParam("window_type", "EditorWindow type name", required: true)] string windowType,
+            [MCPParam("value", "Value to set (string, number, bool, or asset path)", required: true)] object value,
+            [MCPParam("selector", "USS selector to find element")] string selector = null,
+            [MCPParam("name", "Element name to match")] string name = null,
+            [MCPParam("class_name", "USS class to filter by")] string className = null)
+        {
+            try
+            {
+                // Find the EditorWindow
+                var (window, windowError) = FindEditorWindow(windowType);
+                if (window == null)
+                {
+                    return windowError;
+                }
+
+                VisualElement rootElement = window.rootVisualElement;
+                if (rootElement == null)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = $"EditorWindow '{windowType}' has no rootVisualElement."
+                    };
+                }
+
+                // Find the target element
+                var (element, findError) = FindElement(rootElement, selector, name, className);
+                if (element == null)
+                {
+                    return findError;
+                }
+
+                // Validate element state
+                if (!IsElementVisible(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is not visible.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                if (!IsElementEnabled(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is disabled.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                if (!IsEditable(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = $"Element type '{element.GetType().Name}' is not editable.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                // Apply the value
+                return ApplyElementValue(element, value);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[UIToolkitTools] Error setting value: {exception.Message}");
+                return new
+                {
+                    success = false,
+                    error = $"Error setting value: {exception.Message}"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Applies a value to an element based on its type.
+        /// </summary>
+        private static object ApplyElementValue(VisualElement element, object value)
+        {
+            var elementInfo = BuildBasicElementInfo(element);
+
+            switch (element)
+            {
+                case TextField textField:
+                {
+                    string previousValue = textField.value;
+                    string newValue = value?.ToString() ?? "";
+                    textField.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case IntegerField intField:
+                {
+                    int previousValue = intField.value;
+                    if (!TryConvertToInt(value, out int newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to integer."
+                        };
+                    }
+                    intField.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case FloatField floatField:
+                {
+                    float previousValue = floatField.value;
+                    if (!TryConvertToFloat(value, out float newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to float."
+                        };
+                    }
+                    floatField.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case Toggle toggle:
+                {
+                    bool previousValue = toggle.value;
+                    if (!TryConvertToBool(value, out bool newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to boolean."
+                        };
+                    }
+                    toggle.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case DropdownField dropdownField:
+                {
+                    string previousValue = dropdownField.value;
+                    string newValue = value?.ToString() ?? "";
+
+                    // Check if the value exists in choices
+                    if (dropdownField.choices != null && !dropdownField.choices.Contains(newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Value '{newValue}' is not in the available choices.",
+                            choices = dropdownField.choices.ToList()
+                        };
+                    }
+
+                    dropdownField.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case EnumField enumField:
+                {
+                    var previousValue = enumField.value;
+                    string valueStr = value?.ToString() ?? "";
+
+                    var enumType = enumField.value?.GetType();
+                    if (enumType == null || !enumType.IsEnum)
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = "EnumField does not have a valid enum type set."
+                        };
+                    }
+
+                    if (!Enum.TryParse(enumType, valueStr, true, out object newEnumValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"'{valueStr}' is not a valid value for enum type '{enumType.Name}'.",
+                            options = Enum.GetNames(enumType)
+                        };
+                    }
+
+                    enumField.value = (Enum)newEnumValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue = previousValue?.ToString(),
+                        newValue = newEnumValue.ToString()
+                    };
+                }
+
+                case Slider slider:
+                {
+                    float previousValue = slider.value;
+                    if (!TryConvertToFloat(value, out float newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to float."
+                        };
+                    }
+
+                    // Clamp to slider range
+                    newValue = Mathf.Clamp(newValue, slider.lowValue, slider.highValue);
+                    slider.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue,
+                        range = new { min = slider.lowValue, max = slider.highValue }
+                    };
+                }
+
+                case SliderInt sliderInt:
+                {
+                    int previousValue = sliderInt.value;
+                    if (!TryConvertToInt(value, out int newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to integer."
+                        };
+                    }
+
+                    // Clamp to slider range
+                    newValue = Mathf.Clamp(newValue, sliderInt.lowValue, sliderInt.highValue);
+                    sliderInt.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue,
+                        range = new { min = sliderInt.lowValue, max = sliderInt.highValue }
+                    };
+                }
+
+                case MinMaxSlider minMaxSlider:
+                {
+                    // Expect value to be an object with minValue and maxValue
+                    float previousMin = minMaxSlider.minValue;
+                    float previousMax = minMaxSlider.maxValue;
+
+                    if (!TryParseMinMax(value, out float newMin, out float newMax))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = "Value must be an object with 'minValue' and 'maxValue' properties, or a string like '0.5,0.8'."
+                        };
+                    }
+
+                    // Clamp to limits
+                    newMin = Mathf.Clamp(newMin, minMaxSlider.lowLimit, minMaxSlider.highLimit);
+                    newMax = Mathf.Clamp(newMax, minMaxSlider.lowLimit, minMaxSlider.highLimit);
+
+                    minMaxSlider.minValue = newMin;
+                    minMaxSlider.maxValue = newMax;
+
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousMinValue = previousMin,
+                        previousMaxValue = previousMax,
+                        newMinValue = newMin,
+                        newMaxValue = newMax,
+                        limits = new { min = minMaxSlider.lowLimit, max = minMaxSlider.highLimit }
+                    };
+                }
+
+                case ObjectField objectField:
+                {
+                    var previousObj = objectField.value;
+                    object previousValue = null;
+                    if (previousObj != null)
+                    {
+                        previousValue = new
+                        {
+                            name = previousObj.name,
+                            type = previousObj.GetType().Name,
+                            assetPath = AssetDatabase.GetAssetPath(previousObj)
+                        };
+                    }
+
+                    // Handle null/clear
+                    if (value == null || (value is string strVal && string.IsNullOrEmpty(strVal)))
+                    {
+                        objectField.value = null;
+                        return new
+                        {
+                            success = true,
+                            element = elementInfo,
+                            previousValue,
+                            newValue = (object)null
+                        };
+                    }
+
+                    // Load asset by path
+                    string assetPath = value.ToString();
+                    var newObj = AssetDatabase.LoadAssetAtPath(assetPath, objectField.objectType ?? typeof(UnityEngine.Object));
+
+                    if (newObj == null)
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Could not load asset at path '{assetPath}'.",
+                            expectedType = objectField.objectType?.Name
+                        };
+                    }
+
+                    objectField.value = newObj;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue = new
+                        {
+                            name = newObj.name,
+                            type = newObj.GetType().Name,
+                            assetPath
+                        }
+                    };
+                }
+
+                default:
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = $"Setting values for element type '{element.GetType().Name}' is not supported."
+                    };
+            }
+        }
+
+        /// <summary>
+        /// Tries to convert a value to an integer.
+        /// </summary>
+        private static bool TryConvertToInt(object value, out int result)
+        {
+            result = 0;
+
+            if (value is int intVal)
+            {
+                result = intVal;
+                return true;
+            }
+
+            if (value is long longVal)
+            {
+                result = (int)longVal;
+                return true;
+            }
+
+            if (value is float floatVal)
+            {
+                result = (int)floatVal;
+                return true;
+            }
+
+            if (value is double doubleVal)
+            {
+                result = (int)doubleVal;
+                return true;
+            }
+
+            if (value is string strVal && int.TryParse(strVal, out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to convert a value to a float.
+        /// </summary>
+        private static bool TryConvertToFloat(object value, out float result)
+        {
+            result = 0f;
+
+            if (value is float floatVal)
+            {
+                result = floatVal;
+                return true;
+            }
+
+            if (value is double doubleVal)
+            {
+                result = (float)doubleVal;
+                return true;
+            }
+
+            if (value is int intVal)
+            {
+                result = intVal;
+                return true;
+            }
+
+            if (value is long longVal)
+            {
+                result = longVal;
+                return true;
+            }
+
+            if (value is string strVal && float.TryParse(strVal, out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to convert a value to a boolean.
+        /// </summary>
+        private static bool TryConvertToBool(object value, out bool result)
+        {
+            result = false;
+
+            if (value is bool boolVal)
+            {
+                result = boolVal;
+                return true;
+            }
+
+            if (value is string strVal)
+            {
+                if (bool.TryParse(strVal, out result))
+                {
+                    return true;
+                }
+
+                // Handle common string representations
+                strVal = strVal.Trim().ToLowerInvariant();
+                if (strVal == "1" || strVal == "yes" || strVal == "on")
+                {
+                    result = true;
+                    return true;
+                }
+                if (strVal == "0" || strVal == "no" || strVal == "off")
+                {
+                    result = false;
+                    return true;
+                }
+            }
+
+            if (value is int intVal)
+            {
+                result = intVal != 0;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to parse min/max values from various formats.
+        /// </summary>
+        private static bool TryParseMinMax(object value, out float minValue, out float maxValue)
+        {
+            minValue = 0;
+            maxValue = 0;
+
+            if (value is string strVal)
+            {
+                // Try "min,max" format
+                var parts = strVal.Split(',');
+                if (parts.Length == 2 &&
+                    float.TryParse(parts[0].Trim(), out minValue) &&
+                    float.TryParse(parts[1].Trim(), out maxValue))
+                {
+                    return true;
+                }
+            }
+
+            // Try dictionary/JSON object format
+            if (value is IDictionary<string, object> dict)
+            {
+                if (dict.TryGetValue("minValue", out object minObj) &&
+                    dict.TryGetValue("maxValue", out object maxObj) &&
+                    TryConvertToFloat(minObj, out minValue) &&
+                    TryConvertToFloat(maxObj, out maxValue))
+                {
+                    return true;
+                }
+            }
+
+            // Try Newtonsoft JObject
+            try
+            {
+                var valueType = value.GetType();
+                var minProp = valueType.GetProperty("minValue") ?? valueType.GetProperty("MinValue");
+                var maxProp = valueType.GetProperty("maxValue") ?? valueType.GetProperty("MaxValue");
+
+                if (minProp != null && maxProp != null)
+                {
+                    var minObj = minProp.GetValue(value);
+                    var maxObj = maxProp.GetValue(value);
+
+                    if (TryConvertToFloat(minObj, out minValue) && TryConvertToFloat(maxObj, out maxValue))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore reflection errors
+            }
+
+            return false;
+        }
+
+        #endregion
+
         #region Helper Methods
 
         /// <summary>
