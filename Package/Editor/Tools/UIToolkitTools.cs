@@ -1194,6 +1194,186 @@ namespace UnityMCP.Editor.Tools
 
         #endregion
 
+        #region Navigate Tool
+
+        /// <summary>
+        /// Navigates UI elements like foldouts and tabs in an EditorWindow.
+        /// </summary>
+        [MCPTool("uitoolkit_navigate", "Expand/collapse foldouts or select tabs in an EditorWindow", Category = "UIToolkit")]
+        public static object Navigate(
+            [MCPParam("window_type", "EditorWindow type name", required: true)] string windowType,
+            [MCPParam("selector", "USS selector to find element")] string selector = null,
+            [MCPParam("name", "Element name to match")] string name = null,
+            [MCPParam("class_name", "USS class to filter by")] string className = null,
+            [MCPParam("foldout_text", "Find foldout by header text")] string foldoutText = null,
+            [MCPParam("tab_text", "Find tab by label text")] string tabText = null,
+            [MCPParam("expand", "For foldouts: true=expand, false=collapse (toggles if omitted)")] bool? expand = null)
+        {
+            try
+            {
+                // Find the EditorWindow
+                var (window, windowError) = FindEditorWindow(windowType);
+                if (window == null)
+                {
+                    return windowError;
+                }
+
+                VisualElement rootElement = window.rootVisualElement;
+                if (rootElement == null)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = $"EditorWindow '{windowType}' has no rootVisualElement."
+                    };
+                }
+
+                // Determine search text (foldout_text or tab_text takes precedence)
+                string searchText = foldoutText ?? tabText;
+
+                // Find the target element
+                var (element, findError) = FindElement(rootElement, selector, name, className, searchText);
+                if (element == null)
+                {
+                    return findError;
+                }
+
+                // Validate element state
+                if (!IsElementVisible(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is not visible.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                if (!IsElementEnabled(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is disabled.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                // Perform navigation based on element type
+                return PerformNavigation(element, expand);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[UIToolkitTools] Error navigating: {exception.Message}");
+                return new
+                {
+                    success = false,
+                    error = $"Error navigating: {exception.Message}"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Performs navigation action on the element based on its type.
+        /// </summary>
+        private static object PerformNavigation(VisualElement element, bool? expand)
+        {
+            var elementInfo = BuildBasicElementInfo(element);
+
+            switch (element)
+            {
+                case Foldout foldout:
+                {
+                    bool previousState = foldout.value;
+                    bool newState = expand ?? !previousState; // Toggle if expand not specified
+                    foldout.value = newState;
+
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        action = newState ? "expanded" : "collapsed",
+                        previousState,
+                        newState
+                    };
+                }
+
+                case Toggle toggle:
+                {
+                    // Some UI patterns use toggles as collapsible headers
+                    bool previousState = toggle.value;
+                    bool newState = expand ?? !previousState;
+                    toggle.value = newState;
+
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        action = newState ? "enabled" : "disabled",
+                        previousState,
+                        newState
+                    };
+                }
+
+                case TreeView treeView:
+                {
+                    // TreeView navigation - expand/collapse all or specific items
+                    // Note: Full TreeView support would need item IDs
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = "TreeView navigation requires item IDs. Use uitoolkit_query to discover items first.",
+                        suggestion = "TreeView item navigation will be supported in a future update."
+                    };
+                }
+
+                case ListView listView:
+                {
+                    // ListView - scroll to item, select
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = "ListView navigation requires item indices. Use uitoolkit_query to discover items first.",
+                        suggestion = "ListView item navigation will be supported in a future update."
+                    };
+                }
+
+                default:
+                {
+                    // Check if element looks like a tab (Button inside tab bar, or has tab-like classes)
+                    if (element is Button button)
+                    {
+                        // Try clicking it as a tab
+                        using (var clickEvent = ClickEvent.GetPooled())
+                        {
+                            clickEvent.target = button;
+                            button.SendEvent(clickEvent);
+                        }
+
+                        return new
+                        {
+                            success = true,
+                            element = elementInfo,
+                            action = "clicked",
+                            note = "Element clicked as potential tab button."
+                        };
+                    }
+
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = $"Element type '{element.GetType().Name}' is not a navigable element.",
+                        suggestion = "Navigable elements include: Foldout, Toggle (as header), or Button (as tab)."
+                    };
+                }
+            }
+        }
+
+        #endregion
+
         #region Helper Methods
 
         /// <summary>
