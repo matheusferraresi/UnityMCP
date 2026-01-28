@@ -25,7 +25,7 @@ extern "C" {
 /*
  * Configuration constants
  */
-#define PROXY_MAX_RESPONSE_SIZE 65536
+#define PROXY_MAX_RESPONSE_SIZE 262144  /* 256KB */
 #define PROXY_REQUEST_TIMEOUT_MS 30000
 
 /*

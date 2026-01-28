@@ -23,6 +23,13 @@ namespace UnityMCP.Editor.Core
         private const string DLL_NAME = "UnityMCPProxy";
         private const int DEFAULT_PORT = 8080;
 
+        /// <summary>
+        /// Maximum response size supported by the native proxy buffer.
+        /// Must match PROXY_MAX_RESPONSE_SIZE in proxy.h.
+        /// Responses exceeding this limit will trigger an error response.
+        /// </summary>
+        public const int MaxResponseSize = 262144;  // 256KB
+
         #region P/Invoke Declarations
 
         [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
@@ -194,17 +201,121 @@ namespace UnityMCP.Editor.Core
         /// <param name="jsonRequest">The raw JSON-RPC request string from the client.</param>
         private static void OnRequest(string jsonRequest)
         {
+            // Extract request ID for use in error responses
+            string requestId = ExtractRequestId(jsonRequest);
+
             try
             {
                 string response = MCPServer.Instance.HandleRequest(jsonRequest);
+
+                // Check response size before sending to native proxy.
+                // If too large, return a proper JSON-RPC error with the correct request ID.
+                if (response != null && response.Length >= MaxResponseSize)
+                {
+                    Debug.LogWarning($"[NativeProxy] Response size ({response.Length} bytes) exceeds maximum ({MaxResponseSize} bytes). " +
+                        "Returning error response. Consider reducing query depth or scope.");
+
+                    string errorResponse = BuildErrorResponse(
+                        -32603,
+                        $"Response too large ({response.Length} bytes). Maximum supported size is {MaxResponseSize - 1} bytes. " +
+                        "Try reducing max_depth or using more specific queries.",
+                        requestId);
+                    SendResponse(errorResponse);
+                    return;
+                }
+
                 SendResponse(response);
             }
             catch (Exception exception)
             {
                 // Build error response manually to ensure valid JSON-RPC is always returned
-                string errorResponse = $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":-32603,\"message\":\"{EscapeJson(exception.Message)}\"}},\"id\":null}}";
+                string errorResponse = BuildErrorResponse(-32603, exception.Message, requestId);
                 SendResponse(errorResponse);
             }
+        }
+
+        /// <summary>
+        /// Extracts the "id" field from a JSON-RPC request string.
+        /// Uses simple string parsing to avoid JSON deserialization overhead.
+        /// </summary>
+        /// <param name="json">The JSON-RPC request string.</param>
+        /// <returns>The request ID as a string, or "null" if not found.</returns>
+        private static string ExtractRequestId(string json)
+        {
+            if (string.IsNullOrEmpty(json))
+            {
+                return "null";
+            }
+
+            // Simple parser to find "id" field value
+            int idIndex = json.IndexOf("\"id\"", StringComparison.Ordinal);
+            if (idIndex < 0)
+            {
+                return "null";
+            }
+
+            // Find the colon after "id"
+            int colonIndex = json.IndexOf(':', idIndex + 4);
+            if (colonIndex < 0)
+            {
+                return "null";
+            }
+
+            // Skip whitespace after colon
+            int valueStart = colonIndex + 1;
+            while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart]))
+            {
+                valueStart++;
+            }
+
+            if (valueStart >= json.Length)
+            {
+                return "null";
+            }
+
+            char firstChar = json[valueStart];
+
+            // Handle string ID
+            if (firstChar == '"')
+            {
+                int endQuote = json.IndexOf('"', valueStart + 1);
+                if (endQuote > valueStart)
+                {
+                    // Return with quotes for JSON embedding
+                    return json.Substring(valueStart, endQuote - valueStart + 1);
+                }
+            }
+            // Handle numeric ID
+            else if (char.IsDigit(firstChar) || firstChar == '-')
+            {
+                int valueEnd = valueStart;
+                while (valueEnd < json.Length &&
+                       (char.IsDigit(json[valueEnd]) || json[valueEnd] == '-' || json[valueEnd] == '.' ||
+                        json[valueEnd] == 'e' || json[valueEnd] == 'E' || json[valueEnd] == '+'))
+                {
+                    valueEnd++;
+                }
+                return json.Substring(valueStart, valueEnd - valueStart);
+            }
+            // Handle null
+            else if (json.Substring(valueStart).StartsWith("null", StringComparison.Ordinal))
+            {
+                return "null";
+            }
+
+            return "null";
+        }
+
+        /// <summary>
+        /// Builds a JSON-RPC error response with proper formatting.
+        /// </summary>
+        /// <param name="code">The error code.</param>
+        /// <param name="message">The error message.</param>
+        /// <param name="requestId">The request ID (already formatted for JSON - string IDs include quotes).</param>
+        /// <returns>A valid JSON-RPC error response string.</returns>
+        private static string BuildErrorResponse(int code, string message, string requestId)
+        {
+            return $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{code},\"message\":\"{EscapeJson(message)}\"}},\"id\":{requestId}}}";
         }
 
         /// <summary>
