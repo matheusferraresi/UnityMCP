@@ -145,16 +145,22 @@ Unity MCP provides over 40 built-in tools organized by category:
 - **selection_get** - Get currently selected objects in the Unity Editor
 - **selection_set** - Set selection by instance IDs or asset paths
 - **execute_menu_item** - Execute Unity Editor menu items by path (with safety blacklist)
-- **editor_refresh** - Force Unity to refresh assets
+- **manage_editor** - Manage editor state, tags, layers, and tools
+- **unity_refresh** - Refresh Unity asset database and optionally request script compilation
 
 ### Console & Profiling
 - **console_read** - Read Unity Console log entries with filtering and pagination
-- **profiler_start** - Start profiler recording
-- **profiler_stop** - Stop profiler recording and get results
+- **profiler_start** - Start profiler recording, returns job_id for polling
+- **profiler_stop** - Stop profiler recording and finalize job
+- **profiler_get_job** - Poll profiler job status and get captured data
 
 ### UI Toolkit
-- **uitoolkit_query** - Query and inspect UI Toolkit elements in EditorWindows with drill-down support
-- **uitoolkit_interact** - Simulate clicks and interactions with UI elements
+- **uitoolkit_query** - Query VisualElements in EditorWindows with compact overview and drill-down refs
+- **uitoolkit_get_styles** - Get computed USS styles for a VisualElement
+- **uitoolkit_click** - Click a button, toggle, or clickable element in an EditorWindow
+- **uitoolkit_get_value** - Get the current value from an input field or control
+- **uitoolkit_set_value** - Set the value of an input field or control
+- **uitoolkit_navigate** - Expand/collapse foldouts or select tabs in an EditorWindow
 
 ### Batch Operations
 - **batch_execute** - Execute multiple MCP commands in a single operation with fail-fast support
@@ -179,36 +185,37 @@ Resources provide read-only access to Unity Editor state via URI patterns:
 - **editor://state** - Current editor state (play mode, compiling, focus, etc.)
 - **editor://selection** - Currently selected objects
 - **editor://windows** - List of open EditorWindows
-- **editor://prefab-stage** - Current prefab stage information
-- **editor://active-tool** - Currently active editor tool
+- **editor://prefab_stage** - Current prefab editing stage information
+- **editor://active_tool** - Currently active editor tool (Move, Rotate, Scale, etc.)
 
 ### Project Resources
-- **project://info** - Project name, path, Unity version
-- **project://tags** - All project tags
-- **project://layers** - All project layers
-- **project://player-settings** - Player settings summary
-- **project://quality-settings** - Quality settings configuration
-- **project://physics-settings** - Physics engine settings
-- **project://audio-settings** - Audio engine settings
-- **project://input-settings** - Input system configuration
-- **project://rendering-settings** - Rendering pipeline settings
+- **project://info** - Project path, name, and Unity version
+- **project://tags** - Project tags
+- **project://layers** - Project layers and their indices
+- **project://player_settings** - Comprehensive player settings including icons, resolution, and platform settings
+- **project://quality** - Quality settings including all quality levels and their configurations
+- **project://physics** - Physics settings including gravity, solver iterations, and layer collision matrix
+- **project://audio** - Audio settings including speaker mode, DSP buffer, and sample rate
+- **project://input** - Input system actions, bindings, or legacy input axes
+- **project://rendering** - Rendering settings including render pipeline, ambient lighting, and fog
 
 ### Build & Package Resources
-- **build://settings** - Build settings and scene list
-- **package://installed** - List of installed packages
+- **build://settings** - Build target, scenes, and configuration
+- **packages://installed** - List of installed packages and their versions
 
 ### Console & Tests
-- **console://summary** - Console message count summary
-- **console://errors** - Recent console errors
-- **tests://list** - Available tests in the project
-- **profiler://state** - Current profiler state
+- **console://summary** - Quick error/warning/info counts from the console
+- **console://errors** - Detailed compilation/runtime errors with file paths and line numbers
+- **tests://list** - Available unit tests
+- **tests://list/{mode}** - Tests filtered by mode (EditMode or PlayMode)
+- **profiler://state** - Profiler recording status and configuration
 
 ### Animation & Menu
-- **animation://animator/{id}** - Animator component state
+- **animation://controller/{path}** - AnimatorController details including layers, parameters, and state machines
 - **menu://items** - Available Unity Editor menu items
 
 ### Asset Resources
-- **asset://dependencies/{path}** - Asset dependencies for a given path
+- **assets://dependencies/{path}** - Asset dependencies - what an asset uses and what uses it
 
 ## Adding Custom AI Tools
 
