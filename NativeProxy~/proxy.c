@@ -389,6 +389,8 @@ EXPORT void RegisterCallback(RequestCallback callback)
 
 /*
  * Send a response back to the waiting HTTP request.
+ * Note: Response size validation is handled by the C# layer which has access
+ * to the request ID for proper JSON-RPC error responses.
  */
 EXPORT void SendResponse(const char* json)
 {
@@ -400,7 +402,10 @@ EXPORT void SendResponse(const char* json)
     size_t json_length = strlen(json);
     if (json_length >= PROXY_MAX_RESPONSE_SIZE)
     {
-        /* Response too large, truncate with error indicator */
+        /*
+         * Response should have been validated by C# layer.
+         * If we get here, truncate but this should not happen in normal operation.
+         */
         strncpy(s_response_buffer, json, PROXY_MAX_RESPONSE_SIZE - 1);
         s_response_buffer[PROXY_MAX_RESPONSE_SIZE - 1] = '\0';
     }

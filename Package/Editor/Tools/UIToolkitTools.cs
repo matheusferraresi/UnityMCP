@@ -14,32 +14,69 @@ namespace UnityMCP.Editor.Tools
     /// </summary>
     public static class UIToolkitTools
     {
+        #region Element Reference Registry
+
+        /// <summary>
+        /// Maps ref_id strings to VisualElements for drill-down queries.
+        /// Cleared and rebuilt with each query to ensure refs are valid.
+        /// </summary>
+        private static readonly Dictionary<string, VisualElement> s_refRegistry = new Dictionary<string, VisualElement>();
+        private static int s_refCounter = 0;
+        private static string s_lastWindowType = null;
+
+        /// <summary>
+        /// Clears the ref registry. Called at the start of each query.
+        /// </summary>
+        private static void ClearRefRegistry(string windowType)
+        {
+            // Only clear if querying a different window
+            if (s_lastWindowType != windowType)
+            {
+                s_refRegistry.Clear();
+                s_refCounter = 0;
+                s_lastWindowType = windowType;
+            }
+        }
+
+        /// <summary>
+        /// Registers an element and returns its ref_id.
+        /// </summary>
+        private static string RegisterElement(VisualElement element)
+        {
+            string refId = $"e{s_refCounter++}";
+            s_refRegistry[refId] = element;
+            return refId;
+        }
+
+        /// <summary>
+        /// Gets an element by its ref_id.
+        /// </summary>
+        private static VisualElement GetElementByRef(string refId)
+        {
+            return s_refRegistry.TryGetValue(refId, out var element) ? element : null;
+        }
+
+        #endregion
+
         #region Query Tool
 
         /// <summary>
-        /// Queries VisualElements in an EditorWindow by selector, name, type, or USS class.
+        /// Queries VisualElements in an EditorWindow. Returns compact overview by default.
+        /// Use ref_id to drill into specific elements, or text/selector to search.
         /// </summary>
-        /// <param name="windowType">The type name of the EditorWindow to query (e.g., "SceneView", "InspectorWindow").</param>
-        /// <param name="selector">USS selector to query elements (e.g., "#element-name", ".class-name", "Button").</param>
-        /// <param name="name">Element name to search for.</param>
-        /// <param name="className">USS class name to filter by.</param>
-        /// <param name="maxDepth">Maximum depth to traverse in the visual tree (default 10).</param>
-        /// <returns>Matching elements with their properties.</returns>
-        [MCPTool("uitoolkit_query", "Query VisualElements by selector, name, type, or USS class in an EditorWindow", Category = "UIToolkit")]
+        [MCPTool("uitoolkit_query", "Query VisualElements in an EditorWindow. Returns compact overview by default (depth 2). Use ref_id to drill into elements, or text/selector/name to search.", Category = "UIToolkit")]
         public static object Query(
             [MCPParam("window_type", "EditorWindow type name (e.g., 'SceneView', 'InspectorWindow')")] string windowType = null,
+            [MCPParam("ref_id", "Element reference ID to focus on (from previous query). Returns that element's subtree.")] string refId = null,
+            [MCPParam("text", "Search for elements containing this text")] string text = null,
             [MCPParam("selector", "USS selector (e.g., '#element-name', '.class-name', 'Button')")] string selector = null,
             [MCPParam("name", "Element name to search for")] string name = null,
             [MCPParam("class_name", "USS class name to filter by")] string className = null,
-            [MCPParam("max_depth", "Maximum depth to traverse (default 10)")] int maxDepth = 10)
+            [MCPParam("max_depth", "Maximum depth (default 2 for overview, 5 when using ref_id)")] int? maxDepth = null,
+            [MCPParam("filter", "Filter: 'visible' (default) or 'all'")] string filter = "visible")
         {
             try
             {
-                // At least one query parameter must be provided (unless we just want to list windows)
-                bool hasQueryParams = !string.IsNullOrEmpty(selector) ||
-                                      !string.IsNullOrEmpty(name) ||
-                                      !string.IsNullOrEmpty(className);
-
                 // If no window type specified, list available windows
                 if (string.IsNullOrEmpty(windowType))
                 {
@@ -56,67 +93,256 @@ namespace UnityMCP.Editor.Tools
                 VisualElement rootElement = window.rootVisualElement;
                 if (rootElement == null)
                 {
+                    return new { error = $"EditorWindow '{windowType}' has no rootVisualElement." };
+                }
+
+                // Determine query mode and set smart defaults
+                bool hasSearchParams = !string.IsNullOrEmpty(selector) ||
+                                       !string.IsNullOrEmpty(name) ||
+                                       !string.IsNullOrEmpty(className) ||
+                                       !string.IsNullOrEmpty(text);
+                bool hasDrillDown = !string.IsNullOrEmpty(refId);
+
+                // Smart depth defaults: 2 for overview, 5 for drill-down, 3 for search
+                int effectiveDepth = maxDepth ?? (hasDrillDown ? 5 : (hasSearchParams ? 3 : 2));
+
+                // Parse filter mode
+                FilterMode filterMode = ParseFilterMode(filter);
+                Rect? viewportBounds = filterMode == FilterMode.Visible ? rootElement.worldBound : (Rect?)null;
+
+                // Clear ref registry for new window queries (keep refs for drill-down)
+                if (!hasDrillDown)
+                {
+                    ClearRefRegistry(windowType);
+                }
+
+                // Determine the target element (root or ref_id target)
+                VisualElement targetElement = rootElement;
+                if (hasDrillDown)
+                {
+                    targetElement = GetElementByRef(refId);
+                    if (targetElement == null)
+                    {
+                        return new { error = $"Invalid ref_id '{refId}'. Refs expire when querying a different window." };
+                    }
+                }
+
+                // MODE 1: Text search - find elements containing specific text
+                if (!string.IsNullOrEmpty(text))
+                {
+                    var matches = new List<object>();
+                    SearchByText(targetElement, text, matches, filterMode, viewportBounds, effectiveDepth);
                     return new
                     {
-                        success = false,
-                        error = $"EditorWindow '{windowType}' has no rootVisualElement."
+                        window = window.GetType().Name,
+                        search = text,
+                        count = matches.Count,
+                        matches
                     };
                 }
 
-                // If no query params, return the root element structure
-                if (!hasQueryParams)
+                // MODE 2: Selector/name/class search
+                if (hasSearchParams)
                 {
+                    var matchingElements = new List<VisualElement>();
+
+                    if (!string.IsNullOrEmpty(selector))
+                    {
+                        matchingElements.AddRange(targetElement.Query(selector).ToList());
+                    }
+                    else
+                    {
+                        CollectMatchingElements(targetElement, name, className, matchingElements, 0, effectiveDepth);
+                    }
+
+                    // Filter by visibility if needed
+                    if (filterMode == FilterMode.Visible)
+                    {
+                        matchingElements = matchingElements.Where(e => ShouldIncludeElement(e, filterMode, viewportBounds)).ToList();
+                    }
+
+                    var matches = matchingElements.Select(e => BuildCompactElementData(e)).ToList();
                     return new
                     {
-                        success = true,
-                        windowType = window.GetType().Name,
-                        windowTitle = window.titleContent.text,
-                        rootElement = BuildElementTree(rootElement, 0, maxDepth)
+                        window = window.GetType().Name,
+                        query = selector ?? name ?? className,
+                        count = matches.Count,
+                        matches
                     };
                 }
 
-                // Query elements
-                var matchingElements = new List<VisualElement>();
+                // MODE 3: Overview/drill-down - return element tree
+                var context = new TreeBuildContext(filterMode, viewportBounds);
+                var tree = BuildCompactTree(targetElement, 0, effectiveDepth, context);
 
-                if (!string.IsNullOrEmpty(selector))
+                var result = new Dictionary<string, object>
                 {
-                    // Use USS selector query
-                    var queryResults = rootElement.Query(selector).ToList();
-                    matchingElements.AddRange(queryResults);
-                }
-                else
-                {
-                    // Manual search by name and/or class
-                    CollectMatchingElements(rootElement, name, className, matchingElements, 0, maxDepth);
-                }
-
-                // Build result data
-                var elementsData = matchingElements.Select(element => BuildElementData(element)).ToList();
-
-                return new
-                {
-                    success = true,
-                    windowType = window.GetType().Name,
-                    windowTitle = window.titleContent.text,
-                    matchCount = matchingElements.Count,
-                    query = new
-                    {
-                        selector,
-                        name,
-                        className
-                    },
-                    elements = elementsData
+                    { "window", window.GetType().Name },
+                    { "root", tree },
+                    { "refs", context.ElementCount }
                 };
+
+                if (hasDrillDown)
+                {
+                    result["focused"] = refId;
+                }
+
+                if (context.WasTruncated)
+                {
+                    result["truncated"] = true;
+                }
+
+                return result;
             }
             catch (Exception exception)
             {
                 Debug.LogWarning($"[UIToolkitTools] Error querying elements: {exception.Message}");
-                return new
-                {
-                    success = false,
-                    error = $"Error querying elements: {exception.Message}"
-                };
+                return new { error = exception.Message };
             }
+        }
+
+        /// <summary>
+        /// Searches for elements containing specific text.
+        /// </summary>
+        private static void SearchByText(VisualElement element, string searchText, List<object> results,
+            FilterMode filterMode, Rect? viewportBounds, int maxDepth, int currentDepth = 0)
+        {
+            if (element == null || currentDepth > maxDepth || results.Count >= 20)
+                return;
+
+            if (!ShouldIncludeElement(element, filterMode, viewportBounds))
+            {
+                // Still search children in case they're visible
+                foreach (var child in element.Children())
+                {
+                    SearchByText(child, searchText, results, filterMode, viewportBounds, maxDepth, currentDepth + 1);
+                }
+                return;
+            }
+
+            string elementText = GetElementText(element);
+            if (elementText != null && elementText.IndexOf(searchText, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                results.Add(BuildCompactElementData(element));
+            }
+
+            foreach (var child in element.Children())
+            {
+                SearchByText(child, searchText, results, filterMode, viewportBounds, maxDepth, currentDepth + 1);
+            }
+        }
+
+        /// <summary>
+        /// Builds compact element data with ref for actions.
+        /// </summary>
+        private static object BuildCompactElementData(VisualElement element)
+        {
+            string refId = RegisterElement(element);
+            var data = new Dictionary<string, object>
+            {
+                { "ref", refId },
+                { "type", element.GetType().Name }
+            };
+
+            if (!string.IsNullOrEmpty(element.name))
+                data["name"] = element.name;
+
+            string text = GetElementText(element);
+            if (text != null)
+                data["text"] = text.Length > 50 ? text.Substring(0, 47) + "..." : text;
+
+            // Include key USS classes (skip common unity-* ones, limit to 3)
+            var classes = element.GetClasses()
+                .Where(c => !c.StartsWith("unity-") || c.Contains("selected") || c.Contains("active") || c.Contains("disabled"))
+                .Take(3)
+                .ToList();
+            if (classes.Count > 0)
+                data["classes"] = classes;
+
+            if (element.childCount > 0)
+                data["children"] = element.childCount;
+
+            return data;
+        }
+
+        /// <summary>
+        /// Builds a compact tree representation with refs.
+        /// </summary>
+        private static object BuildCompactTree(VisualElement element, int currentDepth, int maxDepth, TreeBuildContext context)
+        {
+            if (element == null)
+                return null;
+
+            if (context.ElementCount >= TreeBuildContext.MaxElements)
+            {
+                context.WasTruncated = true;
+                return new { truncated = true };
+            }
+
+            // Apply visibility filter
+            if (!ShouldIncludeElement(element, context.FilterMode, context.ViewportBounds))
+            {
+                // Check for visible descendants
+                if (!HasVisibleDescendants(element, context.FilterMode, maxDepth - currentDepth, context.ViewportBounds))
+                {
+                    context.HiddenCount++;
+                    return null;
+                }
+            }
+
+            context.ElementCount++;
+            string refId = RegisterElement(element);
+
+            var data = new Dictionary<string, object> { { "ref", refId } };
+
+            // Type - use short form for common types
+            string typeName = element.GetType().Name;
+            data["t"] = typeName;
+
+            // Name if present
+            if (!string.IsNullOrEmpty(element.name))
+                data["n"] = element.name;
+
+            // Text if present (truncated)
+            string text = GetElementText(element);
+            if (text != null)
+                data["txt"] = text.Length > 40 ? text.Substring(0, 37) + "..." : text;
+
+            // Key classes only
+            var classes = element.GetClasses()
+                .Where(c => c.Contains("selected") || c.Contains("active") || c.Contains("disabled") || c.Contains("menu") || c.Contains("tab"))
+                .Take(2)
+                .ToList();
+            if (classes.Count > 0)
+                data["cls"] = classes;
+
+            // Children
+            if (currentDepth < maxDepth && element.childCount > 0)
+            {
+                var children = new List<object>();
+                foreach (var child in element.Children())
+                {
+                    var childData = BuildCompactTree(child, currentDepth + 1, maxDepth, context);
+                    if (childData != null)
+                        children.Add(childData);
+
+                    if (context.ElementCount >= TreeBuildContext.MaxElements)
+                    {
+                        context.WasTruncated = true;
+                        break;
+                    }
+                }
+                if (children.Count > 0)
+                    data["c"] = children;
+                else if (element.childCount > 0)
+                    data["more"] = element.childCount;
+            }
+            else if (element.childCount > 0)
+            {
+                data["more"] = element.childCount;
+            }
+
+            return data;
         }
 
         #endregion
@@ -353,18 +579,8 @@ namespace UnityMCP.Editor.Tools
                     return true;
 
                 default:
-                    // Try generic clickable
-                    if (element.clickable != null)
-                    {
-                        using (var clickEvent = ClickEvent.GetPooled())
-                        {
-                            clickEvent.target = element;
-                            element.SendEvent(clickEvent);
-                        }
-                        return true;
-                    }
-
-                    // Last resort: send click event anyway
+                    // Send click event to elements with Position picking mode
+                    // (they're designed to receive pointer events)
                     if (element.pickingMode == PickingMode.Position)
                     {
                         using (var clickEvent = ClickEvent.GetPooled())
@@ -1694,13 +1910,7 @@ namespace UnityMCP.Editor.Tools
                 return true;
             }
 
-            // Check if it has a clickable manipulator
-            if (element.clickable != null)
-            {
-                return true;
-            }
-
-            // Check picking mode
+            // Elements with Position picking mode can receive pointer/click events
             return element.pickingMode == PickingMode.Position;
         }
 
@@ -1897,14 +2107,205 @@ namespace UnityMCP.Editor.Tools
         }
 
         /// <summary>
-        /// Builds a tree structure representing the visual element hierarchy.
+        /// Filter modes for element queries.
+        /// </summary>
+        private enum FilterMode
+        {
+            /// <summary>Only include visible elements (display != none, visibility != hidden).</summary>
+            Visible,
+            /// <summary>Include all elements regardless of visibility.</summary>
+            All
+        }
+
+        /// <summary>
+        /// Parses a filter mode string to the enum value.
+        /// </summary>
+        private static FilterMode ParseFilterMode(string filter)
+        {
+            if (string.IsNullOrEmpty(filter))
+            {
+                return FilterMode.Visible; // Default
+            }
+
+            return filter.ToLowerInvariant() switch
+            {
+                "visible" => FilterMode.Visible,
+                "all" => FilterMode.All,
+                _ => FilterMode.Visible // Default for unknown values
+            };
+        }
+
+        /// <summary>
+        /// Checks if an element should be included based on the filter mode.
+        /// </summary>
+        /// <param name="element">The element to check.</param>
+        /// <param name="filterMode">The filter mode to apply.</param>
+        /// <param name="viewportBounds">The visible viewport bounds (optional, for bounds checking).</param>
+        private static bool ShouldIncludeElement(VisualElement element, FilterMode filterMode, Rect? viewportBounds = null)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            switch (filterMode)
+            {
+                case FilterMode.All:
+                    return true;
+
+                case FilterMode.Visible:
+                    // Check if element itself is visible (CSS visibility)
+                    if (!element.visible || element.resolvedStyle.display == DisplayStyle.None)
+                    {
+                        return false;
+                    }
+                    // Check opacity - elements with 0 opacity are effectively hidden
+                    if (element.resolvedStyle.opacity <= 0)
+                    {
+                        return false;
+                    }
+                    // Check if element has zero size (effectively invisible)
+                    var bounds = element.worldBound;
+                    if (bounds.width <= 0 || bounds.height <= 0)
+                    {
+                        return false;
+                    }
+                    // Check if element is within the visible viewport
+                    if (viewportBounds.HasValue)
+                    {
+                        if (!bounds.Overlaps(viewportBounds.Value))
+                        {
+                            return false;
+                        }
+                    }
+                    return true;
+
+                default:
+                    return true;
+            }
+        }
+
+        /// <summary>
+        /// Checks if an element has any visible descendants (used to include parent containers).
+        /// </summary>
+        private static bool HasVisibleDescendants(VisualElement element, FilterMode filterMode, int maxDepth, Rect? viewportBounds = null, int currentDepth = 0)
+        {
+            if (element == null || currentDepth > maxDepth)
+            {
+                return false;
+            }
+
+            foreach (var child in element.Children())
+            {
+                if (ShouldIncludeElement(child, filterMode, viewportBounds))
+                {
+                    return true;
+                }
+                if (HasVisibleDescendants(child, filterMode, maxDepth, viewportBounds, currentDepth + 1))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Builds a tree structure representing the visual element hierarchy with size tracking.
+        /// Uses an internal class to track element count during recursion.
         /// </summary>
         private static object BuildElementTree(VisualElement element, int currentDepth, int maxDepth)
+        {
+            var context = new TreeBuildContext(FilterMode.All);
+            return BuildElementTreeInternal(element, currentDepth, maxDepth, context);
+        }
+
+        /// <summary>
+        /// Context for tracking state during tree building.
+        /// </summary>
+        private class TreeBuildContext
+        {
+            /// <summary>
+            /// Maximum number of elements to include in the tree.
+            /// This is a safety limit to prevent excessively large responses.
+            /// With ~200 bytes per element average, 300 elements ≈ 60KB.
+            /// </summary>
+            public const int MaxElements = 300;
+
+            /// <summary>
+            /// The filter mode to apply.
+            /// </summary>
+            public FilterMode FilterMode { get; }
+
+            /// <summary>
+            /// The visible viewport bounds for bounds-based filtering.
+            /// Elements outside these bounds are considered not visible.
+            /// </summary>
+            public Rect? ViewportBounds { get; }
+
+            /// <summary>
+            /// Current count of elements added to the tree.
+            /// </summary>
+            public int ElementCount { get; set; }
+
+            /// <summary>
+            /// Count of elements skipped due to filtering.
+            /// </summary>
+            public int HiddenCount { get; set; }
+
+            /// <summary>
+            /// Whether the tree was truncated due to size limits.
+            /// </summary>
+            public bool WasTruncated { get; set; }
+
+            public TreeBuildContext(FilterMode filterMode, Rect? viewportBounds = null)
+            {
+                FilterMode = filterMode;
+                ViewportBounds = viewportBounds;
+            }
+        }
+
+        /// <summary>
+        /// Internal implementation of BuildElementTree with context tracking and filtering.
+        /// </summary>
+        private static object BuildElementTreeInternal(
+            VisualElement element,
+            int currentDepth,
+            int maxDepth,
+            TreeBuildContext context)
         {
             if (element == null)
             {
                 return null;
             }
+
+            // Check if we've hit the element limit
+            if (context.ElementCount >= TreeBuildContext.MaxElements)
+            {
+                context.WasTruncated = true;
+                return new Dictionary<string, object>
+                {
+                    { "truncated", true },
+                    { "reason", "Element limit reached" }
+                };
+            }
+
+            // Apply filter - but always include root element and elements with visible descendants
+            bool includeThisElement = ShouldIncludeElement(element, context.FilterMode, context.ViewportBounds);
+            bool hasVisibleChildren = false;
+
+            if (!includeThisElement && context.FilterMode != FilterMode.All)
+            {
+                // Check if this element has any visible descendants we need to include
+                hasVisibleChildren = HasVisibleDescendants(element, context.FilterMode, maxDepth - currentDepth, context.ViewportBounds);
+                if (!hasVisibleChildren)
+                {
+                    context.HiddenCount++;
+                    return null; // Skip this element entirely
+                }
+            }
+
+            context.ElementCount++;
 
             var ussClasses = new List<string>();
             foreach (string cssClass in element.GetClasses())
@@ -1922,21 +2323,74 @@ namespace UnityMCP.Editor.Tools
                 { "childCount", element.childCount }
             };
 
+            // Mark if this element is just a container for visible children
+            if (!includeThisElement && hasVisibleChildren)
+            {
+                elementData["isContainer"] = true;
+            }
+
             // Only include text if present
             if (elementText != null)
             {
                 elementData["text"] = elementText;
             }
 
-            // Add children if within depth limit
+            // Add children if within depth limit and element limit
             if (currentDepth < maxDepth && element.childCount > 0)
             {
-                var childrenList = new List<object>();
-                foreach (var child in element.Children())
+                // Check if we're approaching the limit
+                if (context.ElementCount >= TreeBuildContext.MaxElements)
                 {
-                    childrenList.Add(BuildElementTree(child, currentDepth + 1, maxDepth));
+                    context.WasTruncated = true;
+                    elementData["childrenTruncated"] = true;
+                    elementData["truncationReason"] = "Element limit reached";
                 }
-                elementData["children"] = childrenList;
+                else
+                {
+                    var childrenList = new List<object>();
+                    int skippedByFilter = 0;
+
+                    foreach (var child in element.Children())
+                    {
+                        var childData = BuildElementTreeInternal(child, currentDepth + 1, maxDepth, context);
+
+                        // Skip null children (filtered out)
+                        if (childData == null)
+                        {
+                            skippedByFilter++;
+                            continue;
+                        }
+
+                        childrenList.Add(childData);
+
+                        // Stop adding children if we hit the limit
+                        if (context.ElementCount >= TreeBuildContext.MaxElements)
+                        {
+                            context.WasTruncated = true;
+                            break;
+                        }
+                    }
+
+                    // Only include children array if there are visible children
+                    if (childrenList.Count > 0)
+                    {
+                        elementData["children"] = childrenList;
+                    }
+
+                    // Update childCount to reflect visible children only
+                    elementData["childCount"] = childrenList.Count;
+                    if (skippedByFilter > 0)
+                    {
+                        elementData["hiddenChildren"] = skippedByFilter;
+                    }
+
+                    // Note if some children were skipped due to element limit
+                    if (childrenList.Count + skippedByFilter < element.childCount)
+                    {
+                        elementData["childrenTruncated"] = true;
+                        elementData["childrenIncluded"] = childrenList.Count;
+                    }
+                }
             }
             else if (element.childCount > 0)
             {
