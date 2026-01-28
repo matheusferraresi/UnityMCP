@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
 using UnityEditor;
+using UnityEditor.UIElements;
 using UnityEngine;
 using UnityEngine.UIElements;
 
@@ -231,6 +232,1148 @@ namespace UnityMCP.Editor.Tools
 
         #endregion
 
+        #region Click Tool
+
+        /// <summary>
+        /// Clicks a button, toggle, or clickable element in an EditorWindow.
+        /// </summary>
+        [MCPTool("uitoolkit_click", "Click a button, toggle, or clickable element in an EditorWindow", Category = "UIToolkit")]
+        public static object Click(
+            [MCPParam("window_type", "EditorWindow type name", required: true)] string windowType,
+            [MCPParam("selector", "USS selector to find element")] string selector = null,
+            [MCPParam("name", "Element name to match")] string name = null,
+            [MCPParam("class_name", "USS class to filter by")] string className = null,
+            [MCPParam("button_text", "Find clickable by visible text")] string buttonText = null)
+        {
+            try
+            {
+                // Find the EditorWindow
+                var (window, windowError) = FindEditorWindow(windowType);
+                if (window == null)
+                {
+                    return windowError;
+                }
+
+                VisualElement rootElement = window.rootVisualElement;
+                if (rootElement == null)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = $"EditorWindow '{windowType}' has no rootVisualElement."
+                    };
+                }
+
+                // Find the target element
+                var (element, findError) = FindElement(rootElement, selector, name, className, buttonText);
+                if (element == null)
+                {
+                    return findError;
+                }
+
+                // Validate element state
+                if (!IsElementVisible(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is not visible.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                if (!IsElementEnabled(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is disabled.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                // Perform the click based on element type
+                bool clicked = PerformClick(element);
+
+                if (!clicked)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is not clickable.",
+                        element = BuildBasicElementInfo(element),
+                        suggestion = "This element type may not support click interactions."
+                    };
+                }
+
+                return new
+                {
+                    success = true,
+                    clicked = BuildBasicElementInfo(element)
+                };
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[UIToolkitTools] Error clicking element: {exception.Message}");
+                return new
+                {
+                    success = false,
+                    error = $"Error clicking element: {exception.Message}"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Performs a click action on the element based on its type.
+        /// </summary>
+        private static bool PerformClick(VisualElement element)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            switch (element)
+            {
+                case Button button:
+                    // Use the clickable to simulate click
+                    using (var clickEvent = ClickEvent.GetPooled())
+                    {
+                        clickEvent.target = button;
+                        button.SendEvent(clickEvent);
+                    }
+                    return true;
+
+                case Toggle toggle:
+                    toggle.value = !toggle.value;
+                    return true;
+
+                case Foldout foldout:
+                    foldout.value = !foldout.value;
+                    return true;
+
+                default:
+                    // Try generic clickable
+                    if (element.clickable != null)
+                    {
+                        using (var clickEvent = ClickEvent.GetPooled())
+                        {
+                            clickEvent.target = element;
+                            element.SendEvent(clickEvent);
+                        }
+                        return true;
+                    }
+
+                    // Last resort: send click event anyway
+                    if (element.pickingMode == PickingMode.Position)
+                    {
+                        using (var clickEvent = ClickEvent.GetPooled())
+                        {
+                            clickEvent.target = element;
+                            element.SendEvent(clickEvent);
+                        }
+                        return true;
+                    }
+
+                    return false;
+            }
+        }
+
+        #endregion
+
+        #region Get Value Tool
+
+        /// <summary>
+        /// Gets the current value from an input field or control in an EditorWindow.
+        /// </summary>
+        [MCPTool("uitoolkit_get_value", "Get the current value from an input field or control", Category = "UIToolkit")]
+        public static object GetValue(
+            [MCPParam("window_type", "EditorWindow type name", required: true)] string windowType,
+            [MCPParam("selector", "USS selector to find element")] string selector = null,
+            [MCPParam("name", "Element name to match")] string name = null,
+            [MCPParam("class_name", "USS class to filter by")] string className = null)
+        {
+            try
+            {
+                // Find the EditorWindow
+                var (window, windowError) = FindEditorWindow(windowType);
+                if (window == null)
+                {
+                    return windowError;
+                }
+
+                VisualElement rootElement = window.rootVisualElement;
+                if (rootElement == null)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = $"EditorWindow '{windowType}' has no rootVisualElement."
+                    };
+                }
+
+                // Find the target element
+                var (element, findError) = FindElement(rootElement, selector, name, className);
+                if (element == null)
+                {
+                    return findError;
+                }
+
+                // Extract value based on element type
+                return ExtractElementValue(element);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[UIToolkitTools] Error getting value: {exception.Message}");
+                return new
+                {
+                    success = false,
+                    error = $"Error getting value: {exception.Message}"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Extracts the value from an element based on its type.
+        /// </summary>
+        private static object ExtractElementValue(VisualElement element)
+        {
+            var elementInfo = BuildBasicElementInfo(element);
+            bool isEditable = IsEditable(element);
+
+            switch (element)
+            {
+                case TextField textField:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = textField.value,
+                        editable = isEditable
+                    };
+
+                case IntegerField intField:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = intField.value,
+                        editable = isEditable
+                    };
+
+                case FloatField floatField:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = floatField.value,
+                        editable = isEditable
+                    };
+
+                case Toggle toggle:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = toggle.value,
+                        label = toggle.label,
+                        editable = isEditable
+                    };
+
+                case DropdownField dropdownField:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = dropdownField.value,
+                        index = dropdownField.index,
+                        choices = dropdownField.choices?.ToList(),
+                        editable = isEditable
+                    };
+
+                case EnumField enumField:
+                    var enumType = enumField.value?.GetType();
+                    string[] enumOptions = null;
+                    if (enumType != null && enumType.IsEnum)
+                    {
+                        enumOptions = Enum.GetNames(enumType);
+                    }
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = enumField.value?.ToString(),
+                        enumType = enumType?.Name,
+                        options = enumOptions,
+                        editable = isEditable
+                    };
+
+                case Slider slider:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = slider.value,
+                        min = slider.lowValue,
+                        max = slider.highValue,
+                        editable = isEditable
+                    };
+
+                case SliderInt sliderInt:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = sliderInt.value,
+                        min = sliderInt.lowValue,
+                        max = sliderInt.highValue,
+                        editable = isEditable
+                    };
+
+                case MinMaxSlider minMaxSlider:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        minValue = minMaxSlider.minValue,
+                        maxValue = minMaxSlider.maxValue,
+                        limitMin = minMaxSlider.lowLimit,
+                        limitMax = minMaxSlider.highLimit,
+                        editable = isEditable
+                    };
+
+                case ObjectField objectField:
+                    var obj = objectField.value;
+                    object valueInfo = null;
+                    if (obj != null)
+                    {
+                        string assetPath = AssetDatabase.GetAssetPath(obj);
+                        valueInfo = new
+                        {
+                            name = obj.name,
+                            type = obj.GetType().Name,
+                            assetPath = string.IsNullOrEmpty(assetPath) ? null : assetPath,
+                            instanceId = obj.GetInstanceID()
+                        };
+                    }
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = valueInfo,
+                        objectType = objectField.objectType?.FullName,
+                        allowSceneObjects = objectField.allowSceneObjects,
+                        editable = isEditable
+                    };
+
+                case RadioButtonGroup radioGroup:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = radioGroup.value,
+                        choices = radioGroup.choices?.ToList(),
+                        editable = isEditable
+                    };
+
+                case Label label:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = label.text,
+                        editable = false
+                    };
+
+                case Foldout foldout:
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        value = foldout.value,
+                        text = foldout.text,
+                        editable = false
+                    };
+
+                default:
+                    // Try to get a generic value property
+                    string textValue = GetElementText(element);
+                    if (textValue != null)
+                    {
+                        return new
+                        {
+                            success = true,
+                            element = elementInfo,
+                            value = textValue,
+                            editable = false,
+                            note = "Value extracted from text property; element type may not be fully supported."
+                        };
+                    }
+
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = $"Element type '{element.GetType().Name}' does not have a readable value.",
+                        suggestion = "This element type may not support value extraction."
+                    };
+            }
+        }
+
+        #endregion
+
+        #region Set Value Tool
+
+        /// <summary>
+        /// Sets the value of an input field or control in an EditorWindow.
+        /// </summary>
+        [MCPTool("uitoolkit_set_value", "Set the value of an input field or control", Category = "UIToolkit")]
+        public static object SetValue(
+            [MCPParam("window_type", "EditorWindow type name", required: true)] string windowType,
+            [MCPParam("value", "Value to set (string, number, bool, or asset path)", required: true)] object value,
+            [MCPParam("selector", "USS selector to find element")] string selector = null,
+            [MCPParam("name", "Element name to match")] string name = null,
+            [MCPParam("class_name", "USS class to filter by")] string className = null)
+        {
+            try
+            {
+                // Find the EditorWindow
+                var (window, windowError) = FindEditorWindow(windowType);
+                if (window == null)
+                {
+                    return windowError;
+                }
+
+                VisualElement rootElement = window.rootVisualElement;
+                if (rootElement == null)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = $"EditorWindow '{windowType}' has no rootVisualElement."
+                    };
+                }
+
+                // Find the target element
+                var (element, findError) = FindElement(rootElement, selector, name, className);
+                if (element == null)
+                {
+                    return findError;
+                }
+
+                // Validate element state
+                if (!IsElementVisible(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is not visible.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                if (!IsElementEnabled(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is disabled.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                if (!IsEditable(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = $"Element type '{element.GetType().Name}' is not editable.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                // Apply the value
+                return ApplyElementValue(element, value);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[UIToolkitTools] Error setting value: {exception.Message}");
+                return new
+                {
+                    success = false,
+                    error = $"Error setting value: {exception.Message}"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Applies a value to an element based on its type.
+        /// </summary>
+        private static object ApplyElementValue(VisualElement element, object value)
+        {
+            var elementInfo = BuildBasicElementInfo(element);
+
+            switch (element)
+            {
+                case TextField textField:
+                {
+                    string previousValue = textField.value;
+                    string newValue = value?.ToString() ?? "";
+                    textField.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case IntegerField intField:
+                {
+                    int previousValue = intField.value;
+                    if (!TryConvertToInt(value, out int newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to integer."
+                        };
+                    }
+                    intField.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case FloatField floatField:
+                {
+                    float previousValue = floatField.value;
+                    if (!TryConvertToFloat(value, out float newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to float."
+                        };
+                    }
+                    floatField.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case Toggle toggle:
+                {
+                    bool previousValue = toggle.value;
+                    if (!TryConvertToBool(value, out bool newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to boolean."
+                        };
+                    }
+                    toggle.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case DropdownField dropdownField:
+                {
+                    string previousValue = dropdownField.value;
+                    string newValue = value?.ToString() ?? "";
+
+                    // Check if the value exists in choices
+                    if (dropdownField.choices != null && !dropdownField.choices.Contains(newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Value '{newValue}' is not in the available choices.",
+                            choices = dropdownField.choices.ToList()
+                        };
+                    }
+
+                    dropdownField.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue
+                    };
+                }
+
+                case EnumField enumField:
+                {
+                    var previousValue = enumField.value;
+                    string valueStr = value?.ToString() ?? "";
+
+                    var enumType = enumField.value?.GetType();
+                    if (enumType == null || !enumType.IsEnum)
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = "EnumField does not have a valid enum type set."
+                        };
+                    }
+
+                    if (!Enum.TryParse(enumType, valueStr, true, out object newEnumValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"'{valueStr}' is not a valid value for enum type '{enumType.Name}'.",
+                            options = Enum.GetNames(enumType)
+                        };
+                    }
+
+                    enumField.value = (Enum)newEnumValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue = previousValue?.ToString(),
+                        newValue = newEnumValue.ToString()
+                    };
+                }
+
+                case Slider slider:
+                {
+                    float previousValue = slider.value;
+                    if (!TryConvertToFloat(value, out float newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to float."
+                        };
+                    }
+
+                    // Clamp to slider range
+                    newValue = Mathf.Clamp(newValue, slider.lowValue, slider.highValue);
+                    slider.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue,
+                        range = new { min = slider.lowValue, max = slider.highValue }
+                    };
+                }
+
+                case SliderInt sliderInt:
+                {
+                    int previousValue = sliderInt.value;
+                    if (!TryConvertToInt(value, out int newValue))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Cannot convert '{value}' to integer."
+                        };
+                    }
+
+                    // Clamp to slider range
+                    newValue = Mathf.Clamp(newValue, sliderInt.lowValue, sliderInt.highValue);
+                    sliderInt.value = newValue;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue,
+                        range = new { min = sliderInt.lowValue, max = sliderInt.highValue }
+                    };
+                }
+
+                case MinMaxSlider minMaxSlider:
+                {
+                    // Expect value to be an object with minValue and maxValue
+                    float previousMin = minMaxSlider.minValue;
+                    float previousMax = minMaxSlider.maxValue;
+
+                    if (!TryParseMinMax(value, out float newMin, out float newMax))
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = "Value must be an object with 'minValue' and 'maxValue' properties, or a string like '0.5,0.8'."
+                        };
+                    }
+
+                    // Clamp to limits
+                    newMin = Mathf.Clamp(newMin, minMaxSlider.lowLimit, minMaxSlider.highLimit);
+                    newMax = Mathf.Clamp(newMax, minMaxSlider.lowLimit, minMaxSlider.highLimit);
+
+                    minMaxSlider.minValue = newMin;
+                    minMaxSlider.maxValue = newMax;
+
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousMinValue = previousMin,
+                        previousMaxValue = previousMax,
+                        newMinValue = newMin,
+                        newMaxValue = newMax,
+                        limits = new { min = minMaxSlider.lowLimit, max = minMaxSlider.highLimit }
+                    };
+                }
+
+                case ObjectField objectField:
+                {
+                    var previousObj = objectField.value;
+                    object previousValue = null;
+                    if (previousObj != null)
+                    {
+                        previousValue = new
+                        {
+                            name = previousObj.name,
+                            type = previousObj.GetType().Name,
+                            assetPath = AssetDatabase.GetAssetPath(previousObj)
+                        };
+                    }
+
+                    // Handle null/clear
+                    if (value == null || (value is string strVal && string.IsNullOrEmpty(strVal)))
+                    {
+                        objectField.value = null;
+                        return new
+                        {
+                            success = true,
+                            element = elementInfo,
+                            previousValue,
+                            newValue = (object)null
+                        };
+                    }
+
+                    // Load asset by path
+                    string assetPath = value.ToString();
+                    var newObj = AssetDatabase.LoadAssetAtPath(assetPath, objectField.objectType ?? typeof(UnityEngine.Object));
+
+                    if (newObj == null)
+                    {
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Could not load asset at path '{assetPath}'.",
+                            expectedType = objectField.objectType?.Name
+                        };
+                    }
+
+                    objectField.value = newObj;
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        previousValue,
+                        newValue = new
+                        {
+                            name = newObj.name,
+                            type = newObj.GetType().Name,
+                            assetPath
+                        }
+                    };
+                }
+
+                default:
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = $"Setting values for element type '{element.GetType().Name}' is not supported."
+                    };
+            }
+        }
+
+        /// <summary>
+        /// Tries to convert a value to an integer.
+        /// </summary>
+        private static bool TryConvertToInt(object value, out int result)
+        {
+            result = 0;
+
+            if (value is int intVal)
+            {
+                result = intVal;
+                return true;
+            }
+
+            if (value is long longVal)
+            {
+                result = (int)longVal;
+                return true;
+            }
+
+            if (value is float floatVal)
+            {
+                result = (int)floatVal;
+                return true;
+            }
+
+            if (value is double doubleVal)
+            {
+                result = (int)doubleVal;
+                return true;
+            }
+
+            if (value is string strVal && int.TryParse(strVal, out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to convert a value to a float.
+        /// </summary>
+        private static bool TryConvertToFloat(object value, out float result)
+        {
+            result = 0f;
+
+            if (value is float floatVal)
+            {
+                result = floatVal;
+                return true;
+            }
+
+            if (value is double doubleVal)
+            {
+                result = (float)doubleVal;
+                return true;
+            }
+
+            if (value is int intVal)
+            {
+                result = intVal;
+                return true;
+            }
+
+            if (value is long longVal)
+            {
+                result = longVal;
+                return true;
+            }
+
+            if (value is string strVal && float.TryParse(strVal, out result))
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to convert a value to a boolean.
+        /// </summary>
+        private static bool TryConvertToBool(object value, out bool result)
+        {
+            result = false;
+
+            if (value is bool boolVal)
+            {
+                result = boolVal;
+                return true;
+            }
+
+            if (value is string strVal)
+            {
+                if (bool.TryParse(strVal, out result))
+                {
+                    return true;
+                }
+
+                // Handle common string representations
+                strVal = strVal.Trim().ToLowerInvariant();
+                if (strVal == "1" || strVal == "yes" || strVal == "on")
+                {
+                    result = true;
+                    return true;
+                }
+                if (strVal == "0" || strVal == "no" || strVal == "off")
+                {
+                    result = false;
+                    return true;
+                }
+            }
+
+            if (value is int intVal)
+            {
+                result = intVal != 0;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Tries to parse min/max values from various formats.
+        /// </summary>
+        private static bool TryParseMinMax(object value, out float minValue, out float maxValue)
+        {
+            minValue = 0;
+            maxValue = 0;
+
+            if (value is string strVal)
+            {
+                // Try "min,max" format
+                var parts = strVal.Split(',');
+                if (parts.Length == 2 &&
+                    float.TryParse(parts[0].Trim(), out minValue) &&
+                    float.TryParse(parts[1].Trim(), out maxValue))
+                {
+                    return true;
+                }
+            }
+
+            // Try dictionary/JSON object format
+            if (value is IDictionary<string, object> dict)
+            {
+                if (dict.TryGetValue("minValue", out object minObj) &&
+                    dict.TryGetValue("maxValue", out object maxObj) &&
+                    TryConvertToFloat(minObj, out minValue) &&
+                    TryConvertToFloat(maxObj, out maxValue))
+                {
+                    return true;
+                }
+            }
+
+            // Try Newtonsoft JObject
+            try
+            {
+                var valueType = value.GetType();
+                var minProp = valueType.GetProperty("minValue") ?? valueType.GetProperty("MinValue");
+                var maxProp = valueType.GetProperty("maxValue") ?? valueType.GetProperty("MaxValue");
+
+                if (minProp != null && maxProp != null)
+                {
+                    var minObj = minProp.GetValue(value);
+                    var maxObj = maxProp.GetValue(value);
+
+                    if (TryConvertToFloat(minObj, out minValue) && TryConvertToFloat(maxObj, out maxValue))
+                    {
+                        return true;
+                    }
+                }
+            }
+            catch
+            {
+                // Ignore reflection errors
+            }
+
+            return false;
+        }
+
+        #endregion
+
+        #region Navigate Tool
+
+        /// <summary>
+        /// Navigates UI elements like foldouts and tabs in an EditorWindow.
+        /// </summary>
+        [MCPTool("uitoolkit_navigate", "Expand/collapse foldouts or select tabs in an EditorWindow", Category = "UIToolkit")]
+        public static object Navigate(
+            [MCPParam("window_type", "EditorWindow type name", required: true)] string windowType,
+            [MCPParam("selector", "USS selector to find element")] string selector = null,
+            [MCPParam("name", "Element name to match")] string name = null,
+            [MCPParam("class_name", "USS class to filter by")] string className = null,
+            [MCPParam("foldout_text", "Find foldout by header text")] string foldoutText = null,
+            [MCPParam("tab_text", "Find tab by label text")] string tabText = null,
+            [MCPParam("expand", "For foldouts: true=expand, false=collapse (toggles if omitted)")] bool? expand = null)
+        {
+            try
+            {
+                // Find the EditorWindow
+                var (window, windowError) = FindEditorWindow(windowType);
+                if (window == null)
+                {
+                    return windowError;
+                }
+
+                VisualElement rootElement = window.rootVisualElement;
+                if (rootElement == null)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = $"EditorWindow '{windowType}' has no rootVisualElement."
+                    };
+                }
+
+                // Determine search text (foldout_text or tab_text takes precedence)
+                string searchText = foldoutText ?? tabText;
+
+                // Find the target element
+                var (element, findError) = FindElement(rootElement, selector, name, className, searchText);
+                if (element == null)
+                {
+                    return findError;
+                }
+
+                // Validate element state
+                if (!IsElementVisible(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is not visible.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                if (!IsElementEnabled(element))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Element is disabled.",
+                        element = BuildBasicElementInfo(element)
+                    };
+                }
+
+                // Perform navigation based on element type
+                return PerformNavigation(element, expand);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[UIToolkitTools] Error navigating: {exception.Message}");
+                return new
+                {
+                    success = false,
+                    error = $"Error navigating: {exception.Message}"
+                };
+            }
+        }
+
+        /// <summary>
+        /// Performs navigation action on the element based on its type.
+        /// </summary>
+        private static object PerformNavigation(VisualElement element, bool? expand)
+        {
+            var elementInfo = BuildBasicElementInfo(element);
+
+            switch (element)
+            {
+                case Foldout foldout:
+                {
+                    bool previousState = foldout.value;
+                    bool newState = expand ?? !previousState; // Toggle if expand not specified
+                    foldout.value = newState;
+
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        action = newState ? "expanded" : "collapsed",
+                        previousState,
+                        newState
+                    };
+                }
+
+                case Toggle toggle:
+                {
+                    // Some UI patterns use toggles as collapsible headers
+                    bool previousState = toggle.value;
+                    bool newState = expand ?? !previousState;
+                    toggle.value = newState;
+
+                    return new
+                    {
+                        success = true,
+                        element = elementInfo,
+                        action = newState ? "enabled" : "disabled",
+                        previousState,
+                        newState
+                    };
+                }
+
+                case TreeView treeView:
+                {
+                    // TreeView navigation - expand/collapse all or specific items
+                    // Note: Full TreeView support would need item IDs
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = "TreeView navigation requires item IDs. Use uitoolkit_query to discover items first.",
+                        suggestion = "TreeView item navigation will be supported in a future update."
+                    };
+                }
+
+                case ListView listView:
+                {
+                    // ListView - scroll to item, select
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = "ListView navigation requires item indices. Use uitoolkit_query to discover items first.",
+                        suggestion = "ListView item navigation will be supported in a future update."
+                    };
+                }
+
+                default:
+                {
+                    // Check if element looks like a tab (Button inside tab bar, or has tab-like classes)
+                    if (element is Button button)
+                    {
+                        // Try clicking it as a tab
+                        using (var clickEvent = ClickEvent.GetPooled())
+                        {
+                            clickEvent.target = button;
+                            button.SendEvent(clickEvent);
+                        }
+
+                        return new
+                        {
+                            success = true,
+                            element = elementInfo,
+                            action = "clicked",
+                            note = "Element clicked as potential tab button."
+                        };
+                    }
+
+                    return new
+                    {
+                        success = false,
+                        element = elementInfo,
+                        error = $"Element type '{element.GetType().Name}' is not a navigable element.",
+                        suggestion = "Navigable elements include: Foldout, Toggle (as header), or Button (as tab)."
+                    };
+                }
+            }
+        }
+
+        #endregion
+
         #region Helper Methods
 
         /// <summary>
@@ -323,6 +1466,292 @@ namespace UnityMCP.Editor.Tools
         }
 
         /// <summary>
+        /// Finds a single VisualElement using flexible search criteria.
+        /// </summary>
+        private static (VisualElement element, object error) FindElement(
+            VisualElement root,
+            string selector = null,
+            string name = null,
+            string className = null,
+            string text = null,
+            int maxDepth = 20)
+        {
+            if (root == null)
+            {
+                return (null, new
+                {
+                    success = false,
+                    error = "Root element is null."
+                });
+            }
+
+            bool hasSearchCriteria = !string.IsNullOrEmpty(selector) ||
+                                     !string.IsNullOrEmpty(name) ||
+                                     !string.IsNullOrEmpty(className) ||
+                                     !string.IsNullOrEmpty(text);
+
+            if (!hasSearchCriteria)
+            {
+                return (null, new
+                {
+                    success = false,
+                    error = "At least one search parameter (selector, name, class_name, or text) is required.",
+                    suggestion = "Use uitoolkit_query to explore available elements."
+                });
+            }
+
+            VisualElement foundElement = null;
+
+            // Strategy 1: USS selector query
+            if (!string.IsNullOrEmpty(selector))
+            {
+                var candidates = root.Query(selector).ToList();
+
+                // Apply additional filters if specified
+                foreach (var candidate in candidates)
+                {
+                    if (MatchesFilters(candidate, name, className, text))
+                    {
+                        foundElement = candidate;
+                        break;
+                    }
+                }
+            }
+            else
+            {
+                // Strategy 2: Recursive search
+                foundElement = FindElementRecursive(root, name, className, text, 0, maxDepth);
+            }
+
+            if (foundElement == null)
+            {
+                string searchDesc = BuildSearchDescription(selector, name, className, text);
+                return (null, new
+                {
+                    success = false,
+                    error = $"Could not find element matching {searchDesc}.",
+                    suggestion = "Use uitoolkit_query to explore available elements."
+                });
+            }
+
+            return (foundElement, null);
+        }
+
+        /// <summary>
+        /// Recursively searches for an element matching the given criteria.
+        /// </summary>
+        private static VisualElement FindElementRecursive(
+            VisualElement element,
+            string targetName,
+            string targetClassName,
+            string targetText,
+            int currentDepth,
+            int maxDepth)
+        {
+            if (element == null || currentDepth > maxDepth)
+            {
+                return null;
+            }
+
+            if (MatchesFilters(element, targetName, targetClassName, targetText))
+            {
+                return element;
+            }
+
+            foreach (var child in element.Children())
+            {
+                var found = FindElementRecursive(child, targetName, targetClassName, targetText, currentDepth + 1, maxDepth);
+                if (found != null)
+                {
+                    return found;
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Checks if an element matches the given filter criteria.
+        /// </summary>
+        private static bool MatchesFilters(VisualElement element, string name, string className, string text)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            // Name filter
+            if (!string.IsNullOrEmpty(name))
+            {
+                if (string.IsNullOrEmpty(element.name) ||
+                    !element.name.Equals(name, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            // Class filter
+            if (!string.IsNullOrEmpty(className))
+            {
+                if (!element.ClassListContains(className))
+                {
+                    return false;
+                }
+            }
+
+            // Text filter
+            if (!string.IsNullOrEmpty(text))
+            {
+                string elementText = GetElementText(element);
+                if (string.IsNullOrEmpty(elementText) ||
+                    !elementText.Contains(text, StringComparison.OrdinalIgnoreCase))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Builds a human-readable description of search criteria.
+        /// </summary>
+        private static string BuildSearchDescription(string selector, string name, string className, string text)
+        {
+            var parts = new List<string>();
+
+            if (!string.IsNullOrEmpty(selector))
+                parts.Add($"selector '{selector}'");
+            if (!string.IsNullOrEmpty(name))
+                parts.Add($"name '{name}'");
+            if (!string.IsNullOrEmpty(className))
+                parts.Add($"class '{className}'");
+            if (!string.IsNullOrEmpty(text))
+                parts.Add($"text containing '{text}'");
+
+            return string.Join(" and ", parts);
+        }
+
+        /// <summary>
+        /// Checks if an element is visible in the hierarchy.
+        /// </summary>
+        private static bool IsElementVisible(VisualElement element)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            var current = element;
+            while (current != null)
+            {
+                if (!current.visible || current.resolvedStyle.display == DisplayStyle.None)
+                {
+                    return false;
+                }
+                current = current.parent;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Checks if an element is enabled in the hierarchy.
+        /// </summary>
+        private static bool IsElementEnabled(VisualElement element)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            var current = element;
+            while (current != null)
+            {
+                if (!current.enabledSelf)
+                {
+                    return false;
+                }
+                current = current.parent;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Checks if an element can be clicked.
+        /// </summary>
+        private static bool IsClickable(VisualElement element)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            // Check for known clickable types
+            if (element is Button || element is Toggle || element is Foldout)
+            {
+                return true;
+            }
+
+            // Check if it has a clickable manipulator
+            if (element.clickable != null)
+            {
+                return true;
+            }
+
+            // Check picking mode
+            return element.pickingMode == PickingMode.Position;
+        }
+
+        /// <summary>
+        /// Checks if an element can have its value set.
+        /// </summary>
+        private static bool IsEditable(VisualElement element)
+        {
+            if (element == null)
+            {
+                return false;
+            }
+
+            return element is TextField ||
+                   element is IntegerField ||
+                   element is FloatField ||
+                   element is Toggle ||
+                   element is DropdownField ||
+                   element is EnumField ||
+                   element is Slider ||
+                   element is SliderInt ||
+                   element is MinMaxSlider ||
+                   element is ObjectField;
+        }
+
+        /// <summary>
+        /// Builds basic element info for response objects.
+        /// </summary>
+        private static object BuildBasicElementInfo(VisualElement element)
+        {
+            if (element == null)
+            {
+                return null;
+            }
+
+            string elementText = GetElementText(element);
+            var info = new Dictionary<string, object>
+            {
+                { "name", element.name },
+                { "typeName", element.GetType().Name }
+            };
+
+            if (elementText != null)
+            {
+                info["text"] = elementText;
+            }
+
+            return info;
+        }
+
+        /// <summary>
         /// Recursively collects elements matching the given name and/or class criteria.
         /// </summary>
         private static void CollectMatchingElements(
@@ -376,24 +1805,95 @@ namespace UnityMCP.Editor.Tools
             }
 
             var boundingBox = element.worldBound;
+            string elementText = GetElementText(element);
 
-            return new
+            var result = new Dictionary<string, object>
             {
-                name = element.name,
-                typeName = element.GetType().Name,
-                ussClasses,
-                visible = element.visible,
-                enabled = element.enabledSelf,
-                pickable = element.pickingMode == PickingMode.Position,
-                bounds = new
-                {
-                    x = boundingBox.x,
-                    y = boundingBox.y,
-                    width = boundingBox.width,
-                    height = boundingBox.height
-                },
-                childCount = element.childCount
+                { "name", element.name },
+                { "typeName", element.GetType().Name },
+                { "ussClasses", ussClasses },
+                { "visible", element.visible },
+                { "enabled", element.enabledSelf },
+                { "pickable", element.pickingMode == PickingMode.Position },
+                { "bounds", new { x = boundingBox.x, y = boundingBox.y, width = boundingBox.width, height = boundingBox.height } },
+                { "childCount", element.childCount }
             };
+
+            // Only include text if present
+            if (elementText != null)
+            {
+                result["text"] = elementText;
+            }
+
+            return result;
+        }
+
+        /// <summary>
+        /// Extracts displayable text content from a VisualElement.
+        /// </summary>
+        /// <param name="element">The element to extract text from.</param>
+        /// <param name="maxLength">Maximum text length before truncation (default 500).</param>
+        /// <returns>The text content, or null if no text is available.</returns>
+        private static string GetElementText(VisualElement element, int maxLength = 500)
+        {
+            if (element == null)
+            {
+                return null;
+            }
+
+            string text = null;
+
+            // Try specific element types first
+            switch (element)
+            {
+                case Label label:
+                    text = label.text;
+                    break;
+                case Button button:
+                    text = button.text;
+                    break;
+                case TextField textField:
+                    text = textField.value;
+                    break;
+                case Foldout foldout:
+                    text = foldout.text;
+                    break;
+                case Toggle toggle:
+                    text = toggle.label;
+                    break;
+                case DropdownField dropdownField:
+                    text = dropdownField.value;
+                    break;
+                case EnumField enumField:
+                    text = enumField.value?.ToString();
+                    break;
+                case TextElement textElement:
+                    text = textElement.text;
+                    break;
+                default:
+                    // Try reflection for unknown types with a 'text' property
+                    try
+                    {
+                        var textProperty = element.GetType().GetProperty("text", BindingFlags.Public | BindingFlags.Instance);
+                        if (textProperty != null && textProperty.PropertyType == typeof(string))
+                        {
+                            text = textProperty.GetValue(element) as string;
+                        }
+                    }
+                    catch
+                    {
+                        // Ignore reflection errors
+                    }
+                    break;
+            }
+
+            // Truncate if needed
+            if (!string.IsNullOrEmpty(text) && text.Length > maxLength)
+            {
+                text = text.Substring(0, maxLength) + "...";
+            }
+
+            return string.IsNullOrEmpty(text) ? null : text;
         }
 
         /// <summary>
@@ -412,6 +1912,8 @@ namespace UnityMCP.Editor.Tools
                 ussClasses.Add(cssClass);
             }
 
+            string elementText = GetElementText(element);
+
             var elementData = new Dictionary<string, object>
             {
                 { "name", element.name },
@@ -419,6 +1921,12 @@ namespace UnityMCP.Editor.Tools
                 { "ussClasses", ussClasses },
                 { "childCount", element.childCount }
             };
+
+            // Only include text if present
+            if (elementText != null)
+            {
+                elementData["text"] = elementText;
+            }
 
             // Add children if within depth limit
             if (currentDepth < maxDepth && element.childCount > 0)
