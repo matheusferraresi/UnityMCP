@@ -102,6 +102,121 @@ Unity MCP uses a native C plugin to maintain an HTTP server on a background thre
 
 When Unity recompiles scripts, the C# domain unloads temporarily. During this time, the native plugin continues accepting HTTP requests but returns a "Unity is recompiling" error instead of disconnecting. Once recompilation completes, requests are forwarded to Unity's main thread for execution.
 
+## Available MCP Tools
+
+Unity MCP provides over 40 built-in tools organized by category:
+
+### GameObject Management
+- **gameobject_manage** - Create, modify, delete, duplicate GameObjects, or move them relative to other objects
+- **gameobject_find** - Find GameObjects by name, tag, layer, component type, path, or instance ID with pagination
+
+### Component Management
+- **component_manage** - Add, remove, or set properties on components attached to GameObjects
+
+### Scene Management
+- **scene_create** - Create a new empty scene at a specified path
+- **scene_load** - Load a scene by path or build index
+- **scene_save** - Save the current scene, optionally to a new path
+- **scene_get_active** - Get information about the currently active scene
+- **scene_get_hierarchy** - Get the hierarchy of GameObjects in the current scene with pagination
+- **scene_screenshot** - Capture a screenshot of the Game View
+
+### Asset Management
+- **asset_manage** - Create, delete, move, rename, duplicate, import, search, or get info about assets
+- **prefab_manage** - Open/close prefab stage, save prefabs, or create prefabs from GameObjects
+- **manage_material** - Create materials, set properties, assign to renderers, or set colors
+- **manage_texture** - Modify texture import settings (format, compression, size, etc.)
+- **manage_shader** - Create and manage shader assets
+- **manage_script** - Create C# scripts from templates
+- **manage_scriptableobject** - Create and manage ScriptableObject assets
+- **manage_vfx** - Create and configure particle systems, trail renderers, and line renderers
+
+### Build & Testing
+- **build_start** - Start a player build asynchronously, returns job_id for polling
+- **build_get_job** - Get build job status and results
+- **tests_run** - Start Unity Test Runner asynchronously (EditMode or PlayMode)
+- **tests_get_job** - Get test run job status and results
+
+### Editor Control
+- **playmode_enter** - Enter play mode
+- **playmode_exit** - Exit play mode
+- **playmode_pause** - Toggle or set pause state
+- **playmode_step** - Advance a single frame while paused
+- **selection_get** - Get currently selected objects in the Unity Editor
+- **selection_set** - Set selection by instance IDs or asset paths
+- **execute_menu_item** - Execute Unity Editor menu items by path (with safety blacklist)
+- **manage_editor** - Manage editor state, tags, layers, and tools
+- **unity_refresh** - Refresh Unity asset database and optionally request script compilation
+
+### Console & Profiling
+- **console_read** - Read Unity Console log entries with filtering and pagination
+- **profiler_start** - Start profiler recording, returns job_id for polling
+- **profiler_stop** - Stop profiler recording and finalize job
+- **profiler_get_job** - Poll profiler job status and get captured data
+
+### UI Toolkit
+- **uitoolkit_query** - Query VisualElements in EditorWindows with compact overview and drill-down refs
+- **uitoolkit_get_styles** - Get computed USS styles for a VisualElement
+- **uitoolkit_click** - Click a button, toggle, or clickable element in an EditorWindow
+- **uitoolkit_get_value** - Get the current value from an input field or control
+- **uitoolkit_set_value** - Set the value of an input field or control
+- **uitoolkit_navigate** - Expand/collapse foldouts or select tabs in an EditorWindow
+
+### Batch Operations
+- **batch_execute** - Execute multiple MCP commands in a single operation with fail-fast support
+
+### Debug & Testing
+- **test_echo** - Echo back input message (connectivity test)
+- **test_add** - Add two numbers (parameter handling test)
+- **test_unity_info** - Get basic Unity editor information
+- **test_list_scenes** - List all scenes in build settings
+
+## Available MCP Resources
+
+Resources provide read-only access to Unity Editor state via URI patterns:
+
+### Scene Resources
+- **scene://gameobject/{id}** - GameObject details by instance ID
+- **scene://gameobject/{id}/components** - List components on a GameObject
+- **scene://gameobject/{id}/component/{type}** - Specific component details
+- **scene://loaded** - List of all loaded scenes
+
+### Editor Resources
+- **editor://state** - Current editor state (play mode, compiling, focus, etc.)
+- **editor://selection** - Currently selected objects
+- **editor://windows** - List of open EditorWindows
+- **editor://prefab_stage** - Current prefab editing stage information
+- **editor://active_tool** - Currently active editor tool (Move, Rotate, Scale, etc.)
+
+### Project Resources
+- **project://info** - Project path, name, and Unity version
+- **project://tags** - Project tags
+- **project://layers** - Project layers and their indices
+- **project://player_settings** - Comprehensive player settings including icons, resolution, and platform settings
+- **project://quality** - Quality settings including all quality levels and their configurations
+- **project://physics** - Physics settings including gravity, solver iterations, and layer collision matrix
+- **project://audio** - Audio settings including speaker mode, DSP buffer, and sample rate
+- **project://input** - Input system actions, bindings, or legacy input axes
+- **project://rendering** - Rendering settings including render pipeline, ambient lighting, and fog
+
+### Build & Package Resources
+- **build://settings** - Build target, scenes, and configuration
+- **packages://installed** - List of installed packages and their versions
+
+### Console & Tests
+- **console://summary** - Quick error/warning/info counts from the console
+- **console://errors** - Detailed compilation/runtime errors with file paths and line numbers
+- **tests://list** - Available unit tests
+- **tests://list/{mode}** - Tests filtered by mode (EditMode or PlayMode)
+- **profiler://state** - Profiler recording status and configuration
+
+### Animation & Menu
+- **animation://controller/{path}** - AnimatorController details including layers, parameters, and state machines
+- **menu://items** - Available Unity Editor menu items
+
+### Asset Resources
+- **assets://dependencies/{path}** - Asset dependencies - what an asset uses and what uses it
+
 ## Adding Custom AI Tools
 
 Create a static method and mark it with `[MCPTool]`:
