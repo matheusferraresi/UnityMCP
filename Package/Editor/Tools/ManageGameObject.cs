@@ -1191,7 +1191,16 @@ namespace UnityMCP.Editor.Tools
         #region Helper Methods - Prefab Resolution
 
         /// <summary>
-        /// Resolves a prefab path, handling name-only and partial paths.
+        /// Model file extensions that can be instantiated as GameObjects.
+        /// </summary>
+        private static readonly HashSet<string> s_modelExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            ".fbx", ".obj", ".blend", ".dae", ".3ds", ".max", ".ma", ".mb", ".gltf", ".glb"
+        };
+
+        /// <summary>
+        /// Resolves a prefab or model path, handling name-only and partial paths.
+        /// Supports both .prefab files and model files (.fbx, .obj, etc.).
         /// </summary>
         private static string ResolvePrefabPath(string prefabPath)
         {
@@ -1201,6 +1210,17 @@ namespace UnityMCP.Editor.Tools
             }
 
             string extension = System.IO.Path.GetExtension(prefabPath);
+
+            // Check if it's a model file extension - these are valid as-is
+            if (s_modelExtensions.Contains(extension))
+            {
+                // Model file with full path - check if it exists
+                if (AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath) != null)
+                {
+                    return prefabPath;
+                }
+                return null;
+            }
 
             // If it's just a name without path, search for the prefab
             if (!prefabPath.Contains("/") && (string.IsNullOrEmpty(extension) || extension.Equals(".prefab", StringComparison.OrdinalIgnoreCase)))
@@ -1232,7 +1252,7 @@ namespace UnityMCP.Editor.Tools
                 return AssetDatabase.GUIDToAssetPath(guids[0]);
             }
 
-            // Append .prefab extension if missing
+            // Append .prefab extension if missing (only for non-model files)
             if (!extension.Equals(".prefab", StringComparison.OrdinalIgnoreCase))
             {
                 prefabPath += ".prefab";
