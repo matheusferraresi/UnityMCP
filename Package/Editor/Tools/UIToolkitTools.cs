@@ -148,7 +148,7 @@ namespace UnityMCP.Editor.Tools
 
                     if (!string.IsNullOrEmpty(selector))
                     {
-                        matchingElements.AddRange(targetElement.Query(selector).ToList());
+                        matchingElements.AddRange(QueryBySelector(targetElement, selector, effectiveDepth));
                     }
                     else
                     {
@@ -395,14 +395,15 @@ namespace UnityMCP.Editor.Tools
 
                 if (!string.IsNullOrEmpty(selector))
                 {
-                    targetElement = rootElement.Query(selector).First();
+                    targetElement = QueryBySelector(rootElement, selector).FirstOrDefault();
                 }
                 else if (!string.IsNullOrEmpty(elementName))
                 {
-                    targetElement = rootElement.Query(elementName).First();
+                    // Try name selector first (with #)
+                    targetElement = QueryBySelector(rootElement, "#" + elementName).FirstOrDefault();
                     if (targetElement == null)
                     {
-                        // Try finding by name attribute
+                        // Try finding by name attribute directly
                         targetElement = rootElement.Q(elementName);
                     }
                 }
@@ -562,12 +563,9 @@ namespace UnityMCP.Editor.Tools
             switch (element)
             {
                 case Button button:
-                    // Use the clickable to simulate click
-                    using (var clickEvent = ClickEvent.GetPooled())
-                    {
-                        clickEvent.target = button;
-                        button.SendEvent(clickEvent);
-                    }
+                    // Simulate a proper click by sending PointerDown + PointerUp sequence
+                    // The Clickable manipulator listens for this sequence, not ClickEvent directly
+                    SimulatePointerClick(button);
                     return true;
 
                 case Toggle toggle:
@@ -579,19 +577,65 @@ namespace UnityMCP.Editor.Tools
                     return true;
 
                 default:
-                    // Send click event to elements with Position picking mode
-                    // (they're designed to receive pointer events)
+                    // For other clickable elements, try the pointer sequence
                     if (element.pickingMode == PickingMode.Position)
                     {
-                        using (var clickEvent = ClickEvent.GetPooled())
-                        {
-                            clickEvent.target = element;
-                            element.SendEvent(clickEvent);
-                        }
+                        SimulatePointerClick(element);
                         return true;
                     }
 
                     return false;
+            }
+        }
+
+        /// <summary>
+        /// Simulates a pointer click by sending PointerDown + PointerUp events through the panel.
+        /// This properly triggers the Clickable manipulator that buttons use.
+        /// Uses UnityEngine.Event to properly initialize pointer events as recommended by Unity docs.
+        /// </summary>
+        private static void SimulatePointerClick(VisualElement element)
+        {
+            var panel = element.panel;
+            if (panel == null)
+            {
+                Debug.LogWarning("[UIToolkitTools] Element has no panel, cannot simulate click");
+                return;
+            }
+
+            // Get the center position of the element in world coordinates
+            Rect worldBound = element.worldBound;
+            Vector2 clickPosition = worldBound.center;
+
+            // Create UnityEngine.Event for MouseDown
+            var mouseDownEvt = new Event()
+            {
+                type = EventType.MouseDown,
+                mousePosition = clickPosition,
+                button = 0,  // Left mouse button
+                clickCount = 1
+            };
+
+            // Create and send PointerDownEvent initialized from UnityEngine.Event
+            using (var pointerDownEvent = PointerDownEvent.GetPooled(mouseDownEvt))
+            {
+                pointerDownEvent.target = element;
+                panel.visualTree.SendEvent(pointerDownEvent);
+            }
+
+            // Create UnityEngine.Event for MouseUp
+            var mouseUpEvt = new Event()
+            {
+                type = EventType.MouseUp,
+                mousePosition = clickPosition,
+                button = 0,  // Left mouse button
+                clickCount = 1
+            };
+
+            // Create and send PointerUpEvent initialized from UnityEngine.Event
+            using (var pointerUpEvent = PointerUpEvent.GetPooled(mouseUpEvt))
+            {
+                pointerUpEvent.target = element;
+                panel.visualTree.SendEvent(pointerUpEvent);
             }
         }
 
@@ -1189,22 +1233,92 @@ namespace UnityMCP.Editor.Tools
                         };
                     }
 
-                    // Load asset by path
-                    string assetPath = value.ToString();
-                    var newObj = AssetDatabase.LoadAssetAtPath(assetPath, objectField.objectType ?? typeof(UnityEngine.Object));
+                    UnityEngine.Object newObj = null;
+                    string resolvedSource = null;
+
+                    // Strategy 1: Try as instance ID (integer)
+                    // Scene objects typically have negative instance IDs
+                    if (TryConvertToInt(value, out int instanceId))
+                    {
+                        newObj = EditorUtility.InstanceIDToObject(instanceId);
+                        if (newObj != null)
+                        {
+                            resolvedSource = $"instanceId:{instanceId}";
+                        }
+                    }
+
+                    // Strategy 2: Try as scene object name (string without path separators)
+                    if (newObj == null && value is string nameOrPath)
+                    {
+                        // If it doesn't look like an asset path, try finding in scene
+                        if (!nameOrPath.StartsWith("Assets/") && !nameOrPath.Contains("/"))
+                        {
+                            // Try finding GameObject in scene by name
+                            var sceneObj = GameObject.Find(nameOrPath);
+                            if (sceneObj != null)
+                            {
+                                // Check if the ObjectField expects a GameObject or Component
+                                var expectedType = objectField.objectType ?? typeof(UnityEngine.Object);
+                                if (expectedType == typeof(GameObject) || expectedType.IsAssignableFrom(typeof(GameObject)))
+                                {
+                                    newObj = sceneObj;
+                                    resolvedSource = $"sceneName:{nameOrPath}";
+                                }
+                                else if (typeof(Component).IsAssignableFrom(expectedType))
+                                {
+                                    // Try to get the expected component type
+                                    var component = sceneObj.GetComponent(expectedType);
+                                    if (component != null)
+                                    {
+                                        newObj = component;
+                                        resolvedSource = $"sceneComponent:{nameOrPath}";
+                                    }
+                                }
+                            }
+                        }
+
+                        // Strategy 3: Try as asset path
+                        if (newObj == null)
+                        {
+                            newObj = AssetDatabase.LoadAssetAtPath(nameOrPath, objectField.objectType ?? typeof(UnityEngine.Object));
+                            if (newObj != null)
+                            {
+                                resolvedSource = $"assetPath:{nameOrPath}";
+                            }
+                        }
+                    }
 
                     if (newObj == null)
+                    {
+                        string valueStr = value.ToString();
+                        return new
+                        {
+                            success = false,
+                            element = elementInfo,
+                            error = $"Could not find object '{valueStr}'. Tried: instance ID, scene object name, and asset path.",
+                            expectedType = objectField.objectType?.Name,
+                            suggestion = "For scene objects, use instance ID (integer) or exact GameObject name. For assets, use full path starting with 'Assets/'."
+                        };
+                    }
+
+                    // Validate type compatibility
+                    var requiredType = objectField.objectType;
+                    if (requiredType != null && !requiredType.IsInstanceOfType(newObj))
                     {
                         return new
                         {
                             success = false,
                             element = elementInfo,
-                            error = $"Could not load asset at path '{assetPath}'.",
-                            expectedType = objectField.objectType?.Name
+                            error = $"Object '{newObj.name}' is of type '{newObj.GetType().Name}', but ObjectField requires '{requiredType.Name}'.",
+                            resolvedSource
                         };
                     }
 
                     objectField.value = newObj;
+
+                    string newAssetPath = AssetDatabase.GetAssetPath(newObj);
+                    bool isSceneObject = string.IsNullOrEmpty(newAssetPath);
+
                     return new
                     {
                         success = true,
@@ -1214,8 +1328,11 @@ namespace UnityMCP.Editor.Tools
                         {
                             name = newObj.name,
                             type = newObj.GetType().Name,
-                            assetPath
-                        }
+                            instanceId = newObj.GetInstanceID(),
+                            isSceneObject,
+                            assetPath = isSceneObject ? null : newAssetPath
+                        },
+                        resolvedSource
                     };
                 }
 
@@ -1721,7 +1838,7 @@ namespace UnityMCP.Editor.Tools
             // Strategy 1: USS selector query
             if (!string.IsNullOrEmpty(selector))
             {
-                var candidates = root.Query(selector).ToList();
+                var candidates = QueryBySelector(root, selector, maxDepth);
 
                 // Apply additional filters if specified
                 foreach (var candidate in candidates)
@@ -1846,6 +1963,69 @@ namespace UnityMCP.Editor.Tools
                 parts.Add($"text containing '{text}'");
 
             return string.Join(" and ", parts);
+        }
+
+        /// <summary>
+        /// Queries elements using USS-style selector syntax.
+        /// Unity's Query(string) only accepts element names, so we parse the selector
+        /// and use the appropriate query method:
+        /// - "#name" → Query by element name (strips #)
+        /// - ".class" → Query by USS class (strips .)
+        /// - "TypeName" → Query by C# type name (recursive search)
+        /// </summary>
+        private static List<VisualElement> QueryBySelector(VisualElement root, string selector, int maxDepth = 20)
+        {
+            if (root == null || string.IsNullOrEmpty(selector))
+            {
+                return new List<VisualElement>();
+            }
+
+            selector = selector.Trim();
+
+            // Name selector: #element-name
+            if (selector.StartsWith("#"))
+            {
+                string elementName = selector.Substring(1);
+                return root.Query(elementName).ToList();
+            }
+
+            // Class selector: .class-name
+            if (selector.StartsWith("."))
+            {
+                string className = selector.Substring(1);
+                return root.Query(null, className).ToList();
+            }
+
+            // Type selector: TypeName (no prefix)
+            // Unity's Query API doesn't support type selectors via string,
+            // so we do a recursive search matching element.GetType().Name
+            var results = new List<VisualElement>();
+            CollectElementsByType(root, selector, results, 0, maxDepth);
+            return results;
+        }
+
+        /// <summary>
+        /// Recursively collects elements that match the specified type name.
+        /// </summary>
+        private static void CollectElementsByType(VisualElement element, string typeName, List<VisualElement> results, int currentDepth, int maxDepth)
+        {
+            if (element == null || currentDepth > maxDepth)
+            {
+                return;
+            }
+
+            // Check if this element's type matches (case-insensitive)
+            string elementTypeName = element.GetType().Name;
+            if (elementTypeName.Equals(typeName, StringComparison.OrdinalIgnoreCase))
+            {
+                results.Add(element);
+            }
+
+            // Continue searching children
+            foreach (var child in element.Children())
+            {
+                CollectElementsByType(child, typeName, results, currentDepth + 1, maxDepth);
+            }
         }
 
         /// <summary>
