@@ -111,7 +111,7 @@ Unity MCP provides over 40 built-in tools organized by category:
 - **gameobject_find** - Find GameObjects by name, tag, layer, component type, path, or instance ID with pagination
 
 ### Component Management
-- **component_manage** - Add, remove, or set properties on components attached to GameObjects
+- **component_manage** - Add, remove, set properties, or inspect components attached to GameObjects
 
 ### Scene Management
 - **scene_create** - Create a new empty scene at a specified path
