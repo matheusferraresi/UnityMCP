@@ -1323,6 +1323,7 @@ namespace UnityMCP.Editor.Tools
             }
             else if (unityObject is Component component)
             {
+                result["$component"] = unityObject.GetType().Name;
                 result["$path"] = GetGameObjectPath(component.gameObject);
             }
             else
