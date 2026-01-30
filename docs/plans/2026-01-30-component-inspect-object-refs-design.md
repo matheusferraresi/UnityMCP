@@ -2,7 +2,7 @@
 
 **Date:** 2026-01-30
 **Version:** 1.1.0
-**Status:** Design Complete
+**Status:** Implementation Complete
 
 ## Problem Statement
 
@@ -172,11 +172,20 @@ Create helper method for converting `SerializedProperty` to JSON-friendly output
 
 ### Task 4: Version bump and CI verification
 
-- Update `Package/package.json` version to `1.1.0`
-- Verify CI workflow handles minor version bumps correctly
-- If workflow auto-increments, document manual tag process for minor/major bumps
+The CI workflow (`.github/workflows/build-release.yml`) auto-increments **patch** versions based on the latest semver tag. For a minor version bump (1.0.x → 1.1.0), manual intervention is required.
 
-**Files:** `Package/package.json`, `.github/workflows/build-release.yml` (verify only)
+**Process for 1.1.0 release:**
+1. Do NOT modify `package.json` version (CI overwrites it anyway)
+2. After PR merges, manually create the 1.1.0 tag:
+   ```bash
+   git checkout main
+   git pull origin main
+   git tag 1.1.0
+   git push origin 1.1.0
+   ```
+3. The next PR merge will increment from 1.1.0 → 1.1.1
+
+**Files:** `.github/workflows/build-release.yml` (verified, no changes needed)
 
 ## Backward Compatibility
 
