@@ -1177,20 +1177,28 @@ namespace UnityMCP.Editor.Tools
             var objectRef = property.objectReferenceValue;
             if (objectRef == null)
             {
-                return null;
+                return new Dictionary<string, object>
+                {
+                    { "value", null },
+                    { "isObjectReference", true }
+                };
             }
 
             return SerializeUnityObject(objectRef);
         }
 
         /// <summary>
-        /// Serializes a Unity Object to a reference format with $ref, $name, and $path.
+        /// Serializes a Unity Object to a reference format with $ref, $name, $path, and isObjectReference.
         /// </summary>
         private static Dictionary<string, object> SerializeUnityObject(UnityEngine.Object unityObject)
         {
             if (unityObject == null)
             {
-                return null;
+                return new Dictionary<string, object>
+                {
+                    { "value", null },
+                    { "isObjectReference", true }
+                };
             }
 
             var result = new Dictionary<string, object>
@@ -1218,6 +1226,9 @@ namespace UnityMCP.Editor.Tools
                     result["$path"] = assetPath;
                 }
             }
+
+            // Add flag to indicate this is an object reference
+            result["isObjectReference"] = true;
 
             return result;
         }
