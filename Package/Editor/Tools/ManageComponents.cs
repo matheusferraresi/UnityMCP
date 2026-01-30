@@ -528,6 +528,7 @@ namespace UnityMCP.Editor.Tools
 
         /// <summary>
         /// Converts a value to the target type, handling common Unity types.
+        /// Supports $ref syntax for object references (scene objects, assets, components).
         /// </summary>
         private static object ConvertValueToType(object value, Type targetType)
         {
@@ -541,6 +542,39 @@ namespace UnityMCP.Editor.Tools
             if (underlyingType != null)
             {
                 targetType = underlyingType;
+            }
+
+            // Check for $ref syntax early (object references)
+            if (IsObjectReference(value))
+            {
+                return ResolveObjectReference((Dictionary<string, object>)value, targetType);
+            }
+
+            // Handle arrays of references
+            if (targetType.IsArray && value is List<object> arrayList)
+            {
+                Type elementType = targetType.GetElementType();
+                // Check if any element uses $ref syntax
+                bool hasReferences = arrayList.Any(item => IsObjectReference(item));
+                if (hasReferences || typeof(UnityEngine.Object).IsAssignableFrom(elementType))
+                {
+                    var resultArray = Array.CreateInstance(elementType, arrayList.Count);
+                    for (int i = 0; i < arrayList.Count; i++)
+                    {
+                        object element = arrayList[i];
+                        object convertedElement;
+                        if (IsObjectReference(element))
+                        {
+                            convertedElement = ResolveObjectReference((Dictionary<string, object>)element, elementType);
+                        }
+                        else
+                        {
+                            convertedElement = ConvertValueToType(element, elementType);
+                        }
+                        resultArray.SetValue(convertedElement, i);
+                    }
+                    return resultArray;
+                }
             }
 
             // Direct assignment if types match
@@ -860,6 +894,135 @@ namespace UnityMCP.Editor.Tools
                 return Activator.CreateInstance(type);
             }
             return null;
+        }
+
+        /// <summary>
+        /// Checks if the value is an object reference using the $ref syntax.
+        /// Object references are dictionaries containing a "$ref" key.
+        /// </summary>
+        /// <param name="value">The value to check.</param>
+        /// <returns>True if the value is an object reference dictionary with a $ref key.</returns>
+        private static bool IsObjectReference(object value)
+        {
+            if (value is Dictionary<string, object> dict)
+            {
+                return dict.ContainsKey("$ref");
+            }
+            return false;
+        }
+
+        /// <summary>
+        /// Resolves an object reference from a $ref dictionary to a Unity Object.
+        /// Supports instance IDs (integers) and asset paths (strings starting with "Assets/").
+        /// Optionally retrieves a specific component using the $component key.
+        /// </summary>
+        /// <param name="refDict">The reference dictionary containing $ref and optional $component.</param>
+        /// <param name="expectedType">The expected type of the resolved object.</param>
+        /// <returns>The resolved Unity Object, or throws an exception with details on failure.</returns>
+        private static UnityEngine.Object ResolveObjectReference(Dictionary<string, object> refDict, Type expectedType)
+        {
+            if (!refDict.TryGetValue("$ref", out object refValue))
+            {
+                throw new ArgumentException("Object reference dictionary must contain a '$ref' key.");
+            }
+
+            UnityEngine.Object resolvedObject = null;
+            string refDescription = "";
+
+            // Resolve by instance ID (integer)
+            if (refValue is int instanceId)
+            {
+                resolvedObject = EditorUtility.InstanceIDToObject(instanceId);
+                refDescription = $"instance {instanceId}";
+                if (resolvedObject == null)
+                {
+                    throw new ArgumentException($"No object found with instance ID {instanceId}.");
+                }
+            }
+            else if (refValue is long longId)
+            {
+                // Handle JSON deserialization which may produce long instead of int
+                int intId = (int)longId;
+                resolvedObject = EditorUtility.InstanceIDToObject(intId);
+                refDescription = $"instance {intId}";
+                if (resolvedObject == null)
+                {
+                    throw new ArgumentException($"No object found with instance ID {intId}.");
+                }
+            }
+            // Resolve by asset path (string starting with "Assets/")
+            else if (refValue is string assetPath)
+            {
+                if (!assetPath.StartsWith("Assets/"))
+                {
+                    throw new ArgumentException($"Asset path must start with 'Assets/', got: '{assetPath}'.");
+                }
+                resolvedObject = AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(assetPath);
+                refDescription = $"asset '{assetPath}'";
+                if (resolvedObject == null)
+                {
+                    throw new ArgumentException($"No asset found at path '{assetPath}'.");
+                }
+            }
+            else
+            {
+                throw new ArgumentException($"$ref value must be an integer (instance ID) or string (asset path), got: {refValue?.GetType().Name ?? "null"}.");
+            }
+
+            // Handle $component to get a specific component from the resolved object
+            if (refDict.TryGetValue("$component", out object componentValue) && componentValue is string componentTypeName)
+            {
+                GameObject gameObject = null;
+
+                // If the resolved object is a GameObject, use it directly
+                if (resolvedObject is GameObject go)
+                {
+                    gameObject = go;
+                }
+                // If the resolved object is a Component, get its GameObject
+                else if (resolvedObject is Component comp)
+                {
+                    gameObject = comp.gameObject;
+                }
+                // If the resolved object is a prefab asset, get its root GameObject
+                else
+                {
+                    // Try to get a GameObject from a prefab asset
+                    string assetPath = AssetDatabase.GetAssetPath(resolvedObject);
+                    if (!string.IsNullOrEmpty(assetPath) && assetPath.EndsWith(".prefab"))
+                    {
+                        gameObject = AssetDatabase.LoadAssetAtPath<GameObject>(assetPath);
+                    }
+                }
+
+                if (gameObject == null)
+                {
+                    throw new ArgumentException($"Cannot get component '{componentTypeName}' from {refDescription}: resolved object is not a GameObject or Component.");
+                }
+
+                Type componentType = ResolveComponentType(componentTypeName);
+                if (componentType == null)
+                {
+                    throw new ArgumentException($"Component type '{componentTypeName}' not found.");
+                }
+
+                Component foundComponent = gameObject.GetComponent(componentType);
+                if (foundComponent == null)
+                {
+                    throw new ArgumentException($"Component '{componentTypeName}' not found on {refDescription} (GameObject: '{gameObject.name}').");
+                }
+
+                resolvedObject = foundComponent;
+                refDescription = $"{componentTypeName} on {refDescription}";
+            }
+
+            // Validate the resolved object is assignable to the expected type
+            if (!expectedType.IsAssignableFrom(resolvedObject.GetType()))
+            {
+                throw new ArgumentException($"Cannot assign {resolvedObject.GetType().Name} ({refDescription}) to property expecting {expectedType.Name}.");
+            }
+
+            return resolvedObject;
         }
 
         #endregion
