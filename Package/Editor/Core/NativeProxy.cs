@@ -1,7 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
 using UnityEditor;
-using UnityEditor.Compilation;
 using UnityEngine;
 
 namespace UnityMCP.Editor.Core
@@ -88,7 +87,6 @@ namespace UnityMCP.Editor.Core
             }
 
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeReload;
-            CompilationPipeline.compilationStarted -= OnCompilationStarted;
             EditorApplication.quitting -= OnQuit;
 
             try
@@ -143,7 +141,6 @@ namespace UnityMCP.Editor.Core
 
                 // Register for domain unload to safely unregister callback before C# code becomes invalid
                 AssemblyReloadEvents.beforeAssemblyReload += OnBeforeReload;
-                CompilationPipeline.compilationStarted += OnCompilationStarted;
                 EditorApplication.quitting += OnQuit;
 
                 // Enable running in background so server responds when Unity is not focused
@@ -185,23 +182,6 @@ namespace UnityMCP.Editor.Core
         }
 
         /// <summary>
-        /// Called when compilation starts, before domain reload.
-        /// Unregisters the callback early to prevent race conditions during domain reload.
-        /// </summary>
-        private static void OnCompilationStarted(object context)
-        {
-            try
-            {
-                RegisterCallback(null);
-                if (VerboseLogging) Debug.Log("[NativeProxy] Callback unregistered due to compilation start");
-            }
-            catch (Exception exception)
-            {
-                Debug.LogWarning($"[NativeProxy] Error unregistering callback on compilation: {exception.Message}");
-            }
-        }
-
-        /// <summary>
         /// Called when the Unity Editor is quitting.
         /// Cleans up by unregistering the callback and stopping the native server.
         /// </summary>
@@ -209,7 +189,6 @@ namespace UnityMCP.Editor.Core
         {
             try
             {
-                CompilationPipeline.compilationStarted -= OnCompilationStarted;
                 RegisterCallback(null);
                 StopServer();
             }
