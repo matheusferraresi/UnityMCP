@@ -27,6 +27,7 @@ extern "C" {
  */
 #define PROXY_MAX_RESPONSE_SIZE 262144  /* 256KB */
 #define PROXY_REQUEST_TIMEOUT_MS 30000
+#define PROXY_RECOMPILE_POLL_INTERVAL_MS 50
 
 /*
  * Callback type for C# request handler.

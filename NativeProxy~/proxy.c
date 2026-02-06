@@ -4,7 +4,7 @@
  * This native plugin provides an HTTP server that survives Unity domain reloads.
  * It acts as a proxy between the external MCP server and Unity's managed code.
  *
- * When C# is unavailable (during recompile), it returns a "recompiling" message.
+ * When C# is unavailable (during recompile), it blocks until the callback is re-registered.
  * When C# is available, it forwards requests via callback and waits for response.
  *
  * License: GPLv2 (compatible with Mongoose library)
@@ -19,11 +19,13 @@
 #ifdef _WIN32
     #include <windows.h>
     typedef HANDLE ThreadHandle;
+    #define PROXY_SLEEP_MS(ms) Sleep((DWORD)(ms))
     #define GET_PROCESS_ID() ((unsigned long)GetCurrentProcessId())
 #else
     #include <pthread.h>
     #include <unistd.h>
     typedef pthread_t ThreadHandle;
+    #define PROXY_SLEEP_MS(ms) usleep((ms) * 1000)
     #define GET_PROCESS_ID() ((unsigned long)getpid())
 #endif
 
@@ -262,7 +264,7 @@ static int HandleInternalEndpoint(struct mg_connection* connection, struct mg_ht
  * 1. Internal endpoints (/__internal/*) -> Handle specially
  * 2. CORS preflight (OPTIONS) -> 204 No Content
  * 3. Non-POST methods -> 405 Method Not Allowed
- * 4. If callback not valid -> Return "recompiling" response with request ID
+ * 4. If callback not valid -> Block and poll until callback becomes valid
  * 5. Otherwise -> Call C# callback and wait for response
  */
 static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_message* http_message)
@@ -314,13 +316,37 @@ static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_m
     /* Extract the request ID for use in error responses */
     const char* request_id = ExtractJsonRpcId(request_body, body_length);
 
-    /* Check if C# callback is available */
+    /* Block and poll until callback becomes valid (handles domain reload) */
     if (!s_callback_valid || s_csharp_callback == NULL)
     {
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s",
-            BuildErrorResponse(-32000, "Unity is recompiling. Please retry in a moment.", request_id));
-        free(request_body);
-        return;
+        uint64_t poll_start_time = mg_millis();
+        while (!s_callback_valid)
+        {
+            uint64_t elapsed_time = mg_millis() - poll_start_time;
+            if (elapsed_time >= PROXY_REQUEST_TIMEOUT_MS)
+            {
+                mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+                    BuildErrorResponse(-32000, "Unity recompilation timed out.", request_id));
+                free(request_body);
+                return;
+            }
+            if (!s_running || s_shutdown_requested)
+            {
+                mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+                    BuildErrorResponse(-32000, "Server is shutting down.", request_id));
+                free(request_body);
+                return;
+            }
+            PROXY_SLEEP_MS(PROXY_RECOMPILE_POLL_INTERVAL_MS);
+        }
+        /* Defensive null-check after poll loop exits */
+        if (s_csharp_callback == NULL)
+        {
+            mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+                BuildErrorResponse(-32000, "Callback became invalid after recompilation.", request_id));
+            free(request_body);
+            return;
+        }
     }
 
     /* Clear response state and mark call in progress */
