@@ -139,9 +139,11 @@ jobs:
           name: linux-plugin
           path: Package/Plugins/Linux/x86_64/
 
-      - name: Update package.json version
+      - name: Update version strings
         run: |
-          sed -i 's/"version": "[^"]*"/"version": "${{ steps.version.outputs.version }}"/' Package/package.json
+          VERSION="${{ steps.version.outputs.version }}"
+          sed -i 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' Package/package.json
+          sed -i 's/const string ServerVersion = "[^"]*"/const string ServerVersion = "'"$VERSION"'"/' Package/Editor/Core/MCPServer.cs
 
       - name: Copy README and LICENSE to Package
         run: |
@@ -155,7 +157,7 @@ jobs:
           git config user.name "Aloy the Cat[bot]"
           git config user.email "aloy-the-cat[bot]@users.noreply.github.com"
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/${{ github.repository }}.git
-          git add Package/Plugins/ Package/package.json Package/README.md Package/LICENSE
+          git add Package/Plugins/ Package/package.json Package/Editor/Core/MCPServer.cs Package/README.md Package/LICENSE
           if git diff --staged --quiet; then
             echo "No changes to commit, skipping release"
           else
