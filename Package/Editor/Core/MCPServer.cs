@@ -57,7 +57,7 @@ namespace UnityMCP.Editor.Core
         private CancellationTokenSource _cancellationTokenSource;
         private int _port = 8080;
         private const string ServerName = "UnityMCP";
-        private const string ServerVersion = "1.3.0";
+        private const string ServerVersion = "1.3.2";
         private const int MainThreadTimeoutSeconds = 30;
 
         /// <summary>
