@@ -10,6 +10,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
+using UnityEditor.PackageManager;
 using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Core
@@ -57,7 +58,7 @@ namespace UnityMCP.Editor.Core
         private CancellationTokenSource _cancellationTokenSource;
         private int _port = 8080;
         private const string ServerName = "UnityMCP";
-        private const string ServerVersion = "0.1.0";
+        private static readonly string ServerVersion = PackageInfo.FindForAssembly(typeof(MCPServer).Assembly)?.version ?? "1.3.0";
         private const int MainThreadTimeoutSeconds = 30;
 
         /// <summary>
@@ -447,7 +448,7 @@ namespace UnityMCP.Editor.Core
         {
             var result = new JObject
             {
-                ["protocolVersion"] = "2024-11-05",
+                ["protocolVersion"] = "2025-03-26",
                 ["capabilities"] = new JObject
                 {
                     ["tools"] = new JObject(),
