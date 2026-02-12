@@ -246,63 +246,53 @@ D:\Unity Packages\UnityMCP\
 
 ### MCPServer.cs
 
-HTTP server using `System.Net.HttpListener`. Handles MCP protocol methods:
+Synchronous request handler for MCP protocol methods. HTTP transport is handled by the
+native proxy (`NativeProxy~/proxy.c`); MCPServer only routes requests and builds responses.
+All code runs on Unity's main thread via `EditorApplication.update` polling.
 
 - `initialize` - Handshake with client
 - `tools/list` - Return registered tools
 - `tools/call` - Invoke a tool by name
 - `resources/list` - Return registered resources
 - `resources/read` - Read a resource by URI
+- `prompts/list` - Return registered prompts
+- `prompts/get` - Execute a prompt by name
 
 ```csharp
 public class MCPServer
 {
-    private HttpListener _listener;
-    private const int Port = 8080;
-
-    public bool IsRunning => _listener?.IsListening ?? false;
-
-    public void Start()
+    public string HandleRequest(string jsonRequest)
     {
-        _listener = new HttpListener();
-        _listener.Prefixes.Add($"http://localhost:{Port}/");
-        _listener.Start();
-        ListenAsync();
-    }
+        var request = JObject.Parse(jsonRequest);
+        string method = request["method"]?.ToString();
 
-    public void Stop()
-    {
-        _listener?.Stop();
-        _listener?.Close();
-    }
-
-    private async void ListenAsync()
-    {
-        while (_listener.IsListening)
+        JObject response = method switch
         {
-            var context = await _listener.GetContextAsync();
-            _ = HandleRequestAsync(context);
-        }
-    }
-
-    private async Task HandleRequestAsync(HttpListenerContext context)
-    {
-        var request = await ReadRequest(context);
-
-        var response = request.method switch
-        {
-            "initialize" => HandleInitialize(request),
-            "tools/list" => HandleToolsList(request),
-            "tools/call" => HandleToolsCall(request),
-            "resources/list" => HandleResourcesList(request),
-            "resources/read" => HandleResourcesRead(request),
-            _ => CreateError(-32601, "Method not found")
+            "initialize" => HandleInitialize(requestId),
+            "tools/list" => HandleToolsList(requestId),
+            "tools/call" => HandleToolsCall(paramsToken, requestId),
+            "resources/list" => HandleResourcesList(requestId),
+            "resources/read" => HandleResourcesRead(paramsToken, requestId),
+            _ => CreateErrorResponse(MCPErrorCodes.MethodNotFound, ...)
         };
 
-        await WriteResponse(context, response);
+        return response.ToString(Formatting.None);
     }
 }
 ```
+
+### NativeProxy (proxy.h / proxy.c)
+
+Native C plugin providing an HTTP server (via Mongoose) that survives Unity domain reloads.
+Uses a polling architecture to eliminate `ThreadAbortException`:
+
+1. Native thread receives HTTP request, copies body to static buffer, sets `s_has_request`
+2. C# polls `GetPendingRequest()` on `EditorApplication.update` (main thread)
+3. C# processes request synchronously and calls `SendResponse()`
+4. Native thread sees `s_has_response`, sends HTTP response
+
+During domain reload, `SetPollingActive(0)` is called, and the native thread blocks
+until polling is re-activated after reload completes.
 
 ### MCPProtocol.cs
 
@@ -739,7 +729,7 @@ public class MCPServerWindow : EditorWindow
     private void OnGUI()
     {
         // Status
-        bool isRunning = MCPServer.Instance?.IsRunning ?? false;
+        bool isRunning = NativeProxy.IsInitialized;
 
         EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
         GUI.color = isRunning ? Color.green : Color.gray;
@@ -748,13 +738,13 @@ public class MCPServerWindow : EditorWindow
         GUILayout.FlexibleSpace();
 
         if (GUILayout.Button(isRunning ? "Stop" : "Start", EditorStyles.toolbarButton))
-            if (isRunning) MCPServer.Instance.Stop();
-            else MCPServer.Instance.Start();
+            if (isRunning) NativeProxy.Stop();
+            else NativeProxy.Start();
         EditorGUILayout.EndHorizontal();
 
         // Info
         EditorGUILayout.Space();
-        EditorGUILayout.LabelField("Endpoint", "http://localhost:8080/mcp");
+        EditorGUILayout.LabelField("Endpoint", "http://localhost:8080/");
         EditorGUILayout.LabelField("Tools", ToolRegistry.Count.ToString());
         EditorGUILayout.LabelField("Resources", ResourceRegistry.Count.ToString());
 
@@ -799,7 +789,7 @@ public class MCPServerWindow : EditorWindow
 
 ## Dependencies
 
-- `System.Net.HttpListener` - HTTP server (built-in)
+- Native proxy DLL (`UnityMCPProxy`) - HTTP server using Mongoose (survives domain reloads)
 - `com.unity.nuget.newtonsoft-json` (3.2.2) - JSON serialization
 - Standard Unity Editor APIs
 

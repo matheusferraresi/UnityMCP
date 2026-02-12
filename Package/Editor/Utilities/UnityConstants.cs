@@ -15,10 +15,5 @@ namespace UnityMCP.Editor.Utilities
         /// </summary>
         public const float ColorByteMax = 255f;
 
-        /// <summary>
-        /// Windows error code for HTTP operation aborted (ERROR_OPERATION_ABORTED).
-        /// This is used to detect when an HTTP listener is intentionally stopped.
-        /// </summary>
-        public const int HttpOperationAborted = 995;
     }
 }

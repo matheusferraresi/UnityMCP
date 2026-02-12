@@ -67,25 +67,12 @@ namespace UnityMCP.Editor.UI
 
         private void DrawToolbar()
         {
-            // Server is running if either native proxy or managed server is active
-            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
+            bool isRunning = NativeProxy.IsInitialized;
 
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
             // Status indicator
-            string statusText;
-            if (NativeProxy.IsInitialized)
-            {
-                statusText = "\u25CF Running - Native";
-            }
-            else if (MCPServer.Instance?.IsRunning ?? false)
-            {
-                statusText = "\u25CF Running - Fallback";
-            }
-            else
-            {
-                statusText = "\u25CB Stopped";
-            }
+            string statusText = isRunning ? "\u25CF Running" : "\u25CB Stopped";
 
             GUI.color = isRunning ? Color.green : Color.gray;
             GUILayout.Label(statusText, EditorStyles.boldLabel, GUILayout.Width(140));
@@ -116,15 +103,11 @@ namespace UnityMCP.Editor.UI
             {
                 if (isCurrentlyRunning)
                 {
-                    // Stop both native proxy and managed server
                     NativeProxy.Stop();
-                    MCPServer.Instance.Stop();
                 }
                 else
                 {
-                    // Try native proxy first, then fall back to managed server
                     NativeProxy.Start();
-                    MCPServer.Instance.Start();
                 }
             }
             catch (Exception exception)
@@ -136,7 +119,7 @@ namespace UnityMCP.Editor.UI
 
         private void DrawServerInfo()
         {
-            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
+            bool isRunning = NativeProxy.IsInitialized;
             int port = MCPServer.Instance?.Port ?? 8080;
             string endpoint = $"http://localhost:{port}/";
 
@@ -165,7 +148,7 @@ namespace UnityMCP.Editor.UI
 
         private void DrawPortConfiguration()
         {
-            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
+            bool isRunning = NativeProxy.IsInitialized;
 
             EditorGUILayout.LabelField("Configuration", EditorStyles.boldLabel);
 
