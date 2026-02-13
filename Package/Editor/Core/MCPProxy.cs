@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Security.Cryptography;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -47,6 +48,20 @@ namespace UnityMCP.Editor.Core
         [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
         private static extern IntPtr GetProxyVersion();
 
+        [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ConfigureBindAddress([MarshalAs(UnmanagedType.LPStr)] string address);
+
+        [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ConfigureApiKey([MarshalAs(UnmanagedType.LPStr)] string key);
+
+        [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+        private static extern void ConfigureTls(
+            [MarshalAs(UnmanagedType.LPStr)] string certPem,
+            [MarshalAs(UnmanagedType.LPStr)] string keyPem);
+
+        [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+        private static extern int GetTlsSupported();
+
         #endregion
 
         /// <summary>
@@ -70,6 +85,40 @@ namespace UnityMCP.Editor.Core
         /// When false, only warnings and errors are logged.
         /// </summary>
         public static bool VerboseLogging { get; set; } = false;
+
+        /// <summary>
+        /// Gets or sets whether remote access is enabled.
+        /// When enabled, binds to 0.0.0.0 with TLS and API key authentication.
+        /// Note: API key is stored in EditorPrefs (plaintext on disk).
+        /// </summary>
+        public static bool RemoteAccessEnabled
+        {
+            get => EditorPrefs.GetBool("UnityMCP_RemoteAccess", false);
+            set => EditorPrefs.SetBool("UnityMCP_RemoteAccess", value);
+        }
+
+        /// <summary>
+        /// Gets or sets the API key used for bearer token authentication.
+        /// Auto-generated on first enable of remote access.
+        /// </summary>
+        public static string ApiKey
+        {
+            get => EditorPrefs.GetString("UnityMCP_ApiKey", "");
+            set => EditorPrefs.SetString("UnityMCP_ApiKey", value);
+        }
+
+        /// <summary>
+        /// Checks whether the loaded native proxy was compiled with TLS support.
+        /// Returns false if the DLL is missing or outdated.
+        /// </summary>
+        public static bool IsTlsSupported
+        {
+            get
+            {
+                try { return GetTlsSupported() != 0; }
+                catch { return false; }
+            }
+        }
 
         /// <summary>
         /// Starts the MCP proxy server.
@@ -108,6 +157,95 @@ namespace UnityMCP.Editor.Core
         }
 
         /// <summary>
+        /// Restarts the MCP proxy server (stop + reconfigure + start).
+        /// Used when remote access settings change.
+        /// </summary>
+        public static void Restart()
+        {
+            Stop();
+            Initialize();
+        }
+
+        /// <summary>
+        /// Generates a cryptographically random API key with the "umcp_" prefix.
+        /// </summary>
+        public static string GenerateApiKey()
+        {
+            var bytes = new byte[24];
+            using (var rng = RandomNumberGenerator.Create())
+                rng.GetBytes(bytes);
+            return "umcp_" + BitConverter.ToString(bytes).Replace("-", "").ToLowerInvariant();
+        }
+
+        /// <summary>
+        /// Applies remote access configuration to the native proxy.
+        /// Must be called before StartServer().
+        /// </summary>
+        private static void ApplyRemoteAccessConfig()
+        {
+            if (RemoteAccessEnabled)
+            {
+                // Verify native proxy was compiled with TLS support
+                try
+                {
+                    if (GetTlsSupported() == 0)
+                    {
+                        Debug.LogError("[MCPProxy] Cannot enable remote access: native proxy was compiled without TLS support. " +
+                            "Rebuild with -DMG_TLS=MG_TLS_BUILTIN.");
+                        RemoteAccessEnabled = false;
+                        ConfigureBindAddress("127.0.0.1");
+                        ConfigureApiKey("");
+                        ConfigureTls("", "");
+                        return;
+                    }
+                }
+                catch (EntryPointNotFoundException)
+                {
+                    Debug.LogError("[MCPProxy] Cannot enable remote access: native proxy is outdated (missing GetTlsSupported). " +
+                        "Please restart the editor to load the updated plugin.");
+                    RemoteAccessEnabled = false;
+                    ConfigureBindAddress("127.0.0.1");
+                    ConfigureApiKey("");
+                    ConfigureTls("", "");
+                    return;
+                }
+
+                // Ensure API key exists
+                if (string.IsNullOrEmpty(ApiKey))
+                    ApiKey = GenerateApiKey();
+
+                // Load or generate TLS certificate
+                string certDir = CertificateGenerator.GetCertDirectory();
+                var (certPem, keyPem) = CertificateGenerator.GenerateOrLoad(certDir);
+
+                ConfigureBindAddress("0.0.0.0");
+                ConfigureApiKey(ApiKey);
+
+                if (!string.IsNullOrEmpty(certPem) && !string.IsNullOrEmpty(keyPem))
+                {
+                    ConfigureTls(certPem, keyPem);
+                    if (VerboseLogging) Debug.Log("[MCPProxy] Remote access enabled with TLS + API key");
+                }
+                else
+                {
+                    // Refuse to start remote access without TLS — API key would be sent in plaintext
+                    Debug.LogError("[MCPProxy] Cannot enable remote access: TLS certificate generation failed. " +
+                        "Place your own cert.pem and key.pem in: " + certDir);
+                    RemoteAccessEnabled = false;
+                    ConfigureBindAddress("127.0.0.1");
+                    ConfigureApiKey("");
+                    ConfigureTls("", "");
+                }
+            }
+            else
+            {
+                ConfigureBindAddress("127.0.0.1");
+                ConfigureApiKey("");
+                ConfigureTls("", "");
+            }
+        }
+
+        /// <summary>
         /// Static constructor called automatically by Unity due to [InitializeOnLoad].
         /// Attempts to initialize the proxy on editor startup and after domain reloads.
         /// </summary>
@@ -128,6 +266,9 @@ namespace UnityMCP.Editor.Core
 
             try
             {
+                // Configure remote access before starting the server
+                ApplyRemoteAccessConfig();
+
                 int result = StartServer(DEFAULT_PORT);
                 if (result < 0)
                 {

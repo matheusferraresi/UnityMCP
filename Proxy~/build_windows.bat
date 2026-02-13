@@ -25,7 +25,7 @@ if errorlevel 1 (
 
 :: Build with MSVC
 echo Compiling...
-cl /LD /O2 /DNDEBUG /DMG_ENABLE_LINES=0 proxy.c mongoose.c /Fe:UnityMCPProxy.dll ws2_32.lib
+cl /LD /O2 /DNDEBUG /DMG_ENABLE_LINES=0 /DMG_TLS=MG_TLS_BUILTIN proxy.c mongoose.c /Fe:UnityMCPProxy.dll ws2_32.lib
 if errorlevel 1 (
     echo ERROR: Compilation failed
     exit /b 1

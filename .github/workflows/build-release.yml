@@ -66,7 +66,7 @@ jobs:
         shell: bash
         run: |
           cd Proxy~
-          gcc -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
+          gcc -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
             -DPROXY_VERSION="\"${{ needs.version.outputs.version }}\"" \
             proxy.c mongoose.c \
             -o UnityMCPProxy.dll \
@@ -86,7 +86,7 @@ jobs:
       - name: Build macOS Bundle (Universal)
         run: |
           cd Proxy~
-          clang -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
+          clang -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
             -DPROXY_VERSION="\"${{ needs.version.outputs.version }}\"" \
             proxy.c mongoose.c \
             -o UnityMCPProxy.bundle \
@@ -107,7 +107,7 @@ jobs:
       - name: Build Linux Shared Library
         run: |
           cd Proxy~
-          gcc -shared -fPIC -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
+          gcc -shared -fPIC -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
             -DPROXY_VERSION="\"${{ needs.version.outputs.version }}\"" \
             proxy.c mongoose.c \
             -o libUnityMCPProxy.so \

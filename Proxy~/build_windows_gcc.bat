@@ -25,7 +25,7 @@ if errorlevel 1 (
 
 :: Build with GCC
 echo Compiling...
-gcc -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 ^
+gcc -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN ^
     proxy.c mongoose.c ^
     -o UnityMCPProxy.dll ^
     -lws2_32 ^
