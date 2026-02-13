@@ -1,11 +1,11 @@
 /*
- * UnityMCP Native Proxy - Implementation
+ * UnityMCP Proxy - Implementation
  *
- * This native plugin provides an HTTP server that survives Unity domain reloads.
- * It acts as a proxy between the external MCP server and Unity's managed code.
+ * HTTP server plugin that survives Unity domain reloads.
+ * Acts as a proxy between external MCP clients and Unity's C# code.
  *
- * When C# is unavailable (during recompile), it blocks until the callback is re-registered.
- * When C# is available, it forwards requests via callback and waits for response.
+ * When C# is unavailable (during recompile), it blocks until polling is re-activated.
+ * When C# is available, it stores the request in a buffer and poll-waits for the response.
  *
  * License: GPLv2 (compatible with Mongoose library)
  */
@@ -35,14 +35,23 @@
 static struct mg_mgr s_mgr;
 static struct mg_connection* s_listener = NULL;
 static volatile int s_running = 0;
-static volatile int s_callback_valid = 0;
-static RequestCallback s_csharp_callback = NULL;
+static volatile int s_poller_active = 0;
 static ThreadHandle s_server_thread;
 
-/* Response buffer for synchronous C# callback */
+/* Remote access configuration (set before StartServer) */
+static char s_bind_address[64] = "127.0.0.1";
+static char s_api_key[256] = "";
+static char s_tls_cert[8192] = "";
+static char s_tls_key[8192] = "";
+static int  s_tls_enabled = 0;
+
+/* Request buffer for C# polling */
+static char s_request_buffer[PROXY_MAX_REQUEST_SIZE];
+static volatile int s_has_request = 0;
+
+/* Response buffer for synchronous C# response */
 static char s_response_buffer[PROXY_MAX_RESPONSE_SIZE];
 static volatile int s_has_response = 0;
-static volatile int s_call_in_progress = 0;
 
 /* Flag set by DllMain/destructor to signal the server thread to exit and clean up */
 static volatile int s_unloading = 0;
@@ -169,13 +178,24 @@ static const char* BuildErrorResponse(int code, const char* message, const char*
 }
 
 /*
- * CORS headers for all responses
+ * CORS headers: local mode includes Access-Control-Allow-Origin: *,
+ * remote mode omits it to prevent cross-origin requests from arbitrary websites.
  */
-static const char* CORS_HEADERS =
+static const char* CORS_HEADERS_LOCAL =
     "Content-Type: application/json\r\n"
     "Access-Control-Allow-Origin: *\r\n"
     "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
-    "Access-Control-Allow-Headers: Content-Type\r\n";
+    "Access-Control-Allow-Headers: Content-Type, Authorization\r\n";
+
+static const char* CORS_HEADERS_REMOTE =
+    "Content-Type: application/json\r\n"
+    "Access-Control-Allow-Methods: POST, OPTIONS\r\n"
+    "Access-Control-Allow-Headers: Content-Type, Authorization\r\n";
+
+static const char* GetCorsHeaders(void)
+{
+    return (s_api_key[0] != '\0') ? CORS_HEADERS_REMOTE : CORS_HEADERS_LOCAL;
+}
 
 /*
  * Server thread function.
@@ -195,8 +215,8 @@ static DWORD WINAPI ServerThreadFunc(LPVOID param)
     if (s_unloading)
     {
         s_listener = NULL;
-        s_callback_valid = 0;
-        s_csharp_callback = NULL;
+        s_poller_active = 0;
+        s_has_request = 0;
         mg_mgr_free(&s_mgr);
     }
     return 0;
@@ -213,8 +233,8 @@ static void* ServerThreadFunc(void* param)
     if (s_unloading)
     {
         s_listener = NULL;
-        s_callback_valid = 0;
-        s_csharp_callback = NULL;
+        s_poller_active = 0;
+        s_has_request = 0;
         mg_mgr_free(&s_mgr);
     }
     return NULL;
@@ -227,15 +247,16 @@ static void* ServerThreadFunc(void* param)
  * This function processes the HTTP request:
  * 1. CORS preflight (OPTIONS) -> 204 No Content
  * 2. Non-POST methods -> 405 Method Not Allowed
- * 3. If callback not valid -> Block and poll until callback becomes valid
- * 4. Otherwise -> Call C# callback and wait for response
+ * 3. Request too large -> 413 error
+ * 4. If poller not active -> Block and poll until poller becomes active
+ * 5. Copy request to buffer, set s_has_request, poll-wait for s_has_response
  */
 static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_message* http_message)
 {
     /* Handle CORS preflight request */
     if (mg_strcmp(http_message->method, mg_str("OPTIONS")) == 0)
     {
-        mg_http_reply(connection, 204, CORS_HEADERS, "");
+        mg_http_reply(connection, 204, GetCorsHeaders(), "");
         return;
     }
 
@@ -243,96 +264,132 @@ static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_m
     if (mg_strcmp(http_message->method, mg_str("POST")) != 0)
     {
         mg_http_reply(connection, 405,
-            "Content-Type: text/plain\r\n"
-            "Access-Control-Allow-Origin: *\r\n",
+            (s_api_key[0] != '\0')
+                ? "Content-Type: text/plain\r\n"
+                : "Content-Type: text/plain\r\nAccess-Control-Allow-Origin: *\r\n",
             "Method Not Allowed. Use POST for JSON-RPC requests.");
         return;
     }
 
-    /* Extract request body with null termination */
+    /* Validate API key if configured */
+    if (s_api_key[0] != '\0')
+    {
+        struct mg_str *auth = mg_http_get_header(http_message, "Authorization");
+        size_t key_len = strlen(s_api_key);
+        int valid = 0;
+
+        if (auth != NULL && auth->len >= 7 + key_len &&
+            strncmp(auth->buf, "Bearer ", 7) == 0 &&
+            (auth->len - 7) == key_len)
+        {
+            /* Constant-time comparison to prevent timing attacks */
+            volatile unsigned char result = 0;
+            const char *a = auth->buf + 7;
+            const char *b = s_api_key;
+            size_t i;
+            for (i = 0; i < key_len; i++)
+            {
+                result |= (unsigned char)(a[i] ^ b[i]);
+            }
+            valid = (result == 0);
+        }
+
+        if (!valid)
+        {
+            mg_http_reply(connection, 401, GetCorsHeaders(),
+                "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32000,"
+                "\"message\":\"Unauthorized: invalid or missing API key\"},\"id\":null}");
+            return;
+        }
+    }
+
+    /* Extract request body */
     size_t body_length = http_message->body.len;
     if (body_length == 0)
     {
-        mg_http_reply(connection, 400, CORS_HEADERS,
+        mg_http_reply(connection, 400, GetCorsHeaders(),
             "{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32700,"
             "\"message\":\"Parse error: Empty request body.\"},\"id\":null}");
         return;
     }
 
-    char* request_body = (char*)malloc(body_length + 1);
-    if (request_body == NULL)
+    /* Reject requests larger than the buffer */
+    if (body_length >= PROXY_MAX_REQUEST_SIZE)
     {
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s",
-            BuildErrorResponse(-32603, "Internal error: memory allocation failed", "null"));
+        mg_http_reply(connection, 200, GetCorsHeaders(), "%s",
+            BuildErrorResponse(-32600, "Request too large", "null"));
         return;
     }
 
-    memcpy(request_body, http_message->body.buf, body_length);
-    request_body[body_length] = '\0';
+    /* Copy request body to static buffer (no malloc) */
+    memcpy(s_request_buffer, http_message->body.buf, body_length);
+    s_request_buffer[body_length] = '\0';
 
     /* Extract the request ID for use in error responses */
-    const char* request_id = ExtractJsonRpcId(request_body, body_length);
+    const char* request_id = ExtractJsonRpcId(s_request_buffer, body_length);
 
-    /* Block and poll until callback becomes valid (handles domain reload) */
-    if (!s_callback_valid || s_csharp_callback == NULL)
+    /* Block and poll until poller becomes active (handles domain reload) */
+    if (!s_poller_active)
     {
         uint64_t poll_start_time = mg_millis();
-        while (!s_callback_valid)
+        while (!s_poller_active)
         {
             uint64_t elapsed_time = mg_millis() - poll_start_time;
             if (elapsed_time >= PROXY_REQUEST_TIMEOUT_MS)
             {
-                mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+                mg_http_reply(connection, 200, GetCorsHeaders(), "%s",
                     BuildErrorResponse(-32000, "Unity recompilation timed out.", request_id));
-                free(request_body);
                 return;
             }
             if (!s_running)
             {
-                mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+                mg_http_reply(connection, 200, GetCorsHeaders(), "%s",
                     BuildErrorResponse(-32000, "Server is shutting down.", request_id));
-                free(request_body);
                 return;
             }
             PROXY_SLEEP_MS(PROXY_RECOMPILE_POLL_INTERVAL_MS);
         }
-        /* Defensive null-check after poll loop exits */
-        if (s_csharp_callback == NULL)
+    }
+
+    /* Clear response state and signal request available */
+    s_has_response = 0;
+    s_response_buffer[0] = '\0';
+    s_has_request = 1;
+
+    /* Poll-wait for C# to process the request and call SendResponse() */
+    {
+        uint64_t wait_start_time = mg_millis();
+        while (!s_has_response)
         {
-            mg_http_reply(connection, 200, CORS_HEADERS, "%s",
-                BuildErrorResponse(-32000, "Callback became invalid after recompilation.", request_id));
-            free(request_body);
-            return;
+            uint64_t elapsed_time = mg_millis() - wait_start_time;
+            if (elapsed_time >= PROXY_REQUEST_TIMEOUT_MS)
+            {
+                s_has_request = 0;
+                mg_http_reply(connection, 200, GetCorsHeaders(), "%s",
+                    BuildErrorResponse(-32000, "Request processing timed out.", request_id));
+                return;
+            }
+            if (!s_running)
+            {
+                s_has_request = 0;
+                mg_http_reply(connection, 200, GetCorsHeaders(), "%s",
+                    BuildErrorResponse(-32000, "Server is shutting down.", request_id));
+                return;
+            }
+            if (!s_poller_active)
+            {
+                s_has_request = 0;
+                mg_http_reply(connection, 200, GetCorsHeaders(), "%s",
+                    BuildErrorResponse(-32000, "Request interrupted by Unity domain reload. Please retry.", request_id));
+                return;
+            }
+            PROXY_SLEEP_MS(1);
         }
     }
 
-    /* Clear response state and mark call in progress */
-    s_has_response = 0;
-    s_response_buffer[0] = '\0';
-    s_call_in_progress = 1;
-
-    /*
-     * Call the C# callback synchronously from the server thread.
-     * C# handles main thread dispatch internally and calls SendResponse() before returning.
-     */
-    s_csharp_callback(request_body);
-
-    s_call_in_progress = 0;
-
-    free(request_body);
-    request_body = NULL;
-
-    /* Send the response - callback should have set it via SendResponse() */
-    if (s_has_response && s_response_buffer[0] != '\0')
-    {
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s", s_response_buffer);
-    }
-    else
-    {
-        /* No response - call was interrupted by domain reload */
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s",
-            BuildErrorResponse(-32000, "Request interrupted by Unity domain reload. Please retry.", request_id));
-    }
+    /* Send the response */
+    s_has_request = 0;
+    mg_http_reply(connection, 200, GetCorsHeaders(), "%s", s_response_buffer);
 }
 
 /*
@@ -340,7 +397,15 @@ static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_m
  */
 static void EventHandler(struct mg_connection* connection, int event, void* event_data)
 {
-    if (event == MG_EV_HTTP_MSG)
+    if (event == MG_EV_ACCEPT && s_tls_enabled)
+    {
+        struct mg_tls_opts opts;
+        memset(&opts, 0, sizeof(opts));
+        opts.cert = mg_str(s_tls_cert);
+        opts.key = mg_str(s_tls_key);
+        mg_tls_init(connection, &opts);
+    }
+    else if (event == MG_EV_HTTP_MSG)
     {
         struct mg_http_message* http_message = (struct mg_http_message*)event_data;
         HandleHttpRequest(connection, http_message);
@@ -364,8 +429,11 @@ EXPORT int StartServer(int port)
     mg_mgr_init(&s_mgr);
 
     /* Build the listen address string */
-    char listen_address[64];
-    snprintf(listen_address, sizeof(listen_address), "http://0.0.0.0:%d", port);
+    char listen_address[128];
+    if (s_tls_enabled && s_tls_cert[0] && s_tls_key[0])
+        snprintf(listen_address, sizeof(listen_address), "https://%s:%d", s_bind_address, port);
+    else
+        snprintf(listen_address, sizeof(listen_address), "http://%s:%d", s_bind_address, port);
 
     /* Start listening for HTTP connections */
     s_listener = mg_http_listen(&s_mgr, listen_address, EventHandler, NULL);
@@ -425,23 +493,37 @@ EXPORT void StopServer(void)
 #endif
 
     s_listener = NULL;
-    s_callback_valid = 0;
-    s_csharp_callback = NULL;
+    s_poller_active = 0;
+    s_has_request = 0;
 
     mg_mgr_free(&s_mgr);
 }
 
 /*
- * Register the C# callback for handling requests.
+ * Activate or deactivate C# polling.
  */
-EXPORT void RegisterCallback(RequestCallback callback)
+EXPORT void SetPollingActive(int active)
 {
-    s_csharp_callback = callback;
-    s_callback_valid = (callback != NULL) ? 1 : 0;
+    s_poller_active = active ? 1 : 0;
 
-    /* Clear any pending response state when callback changes */
-    s_has_response = 0;
-    s_response_buffer[0] = '\0';
+    if (!active)
+    {
+        /* Clear response state when deactivating */
+        s_has_response = 0;
+        s_response_buffer[0] = '\0';
+    }
+}
+
+/*
+ * Get the pending request body, if any.
+ */
+EXPORT const char* GetPendingRequest(void)
+{
+    if (s_has_request)
+    {
+        return s_request_buffer;
+    }
+    return NULL;
 }
 
 /*
@@ -483,15 +565,15 @@ EXPORT int IsServerRunning(void)
 }
 
 /*
- * Check if a C# callback is currently registered.
+ * Check if C# polling is currently active.
  */
-EXPORT int IsCallbackValid(void)
+EXPORT int IsPollerActive(void)
 {
-    return s_callback_valid;
+    return s_poller_active;
 }
 
 /*
- * Get the process ID of this native library instance.
+ * Get the process ID of this library instance.
  */
 EXPORT unsigned long GetNativeProcessId(void)
 {
@@ -499,15 +581,83 @@ EXPORT unsigned long GetNativeProcessId(void)
 }
 
 /*
+ * Get the version string embedded at compile time.
+ */
+EXPORT const char* GetProxyVersion(void)
+{
+    return PROXY_VERSION;
+}
+
+/*
+ * Configure the bind address for the server.
+ * Must be called before StartServer(). Defaults to "127.0.0.1".
+ */
+EXPORT void ConfigureBindAddress(const char* address)
+{
+    if (address == NULL) return;
+    strncpy(s_bind_address, address, sizeof(s_bind_address) - 1);
+    s_bind_address[sizeof(s_bind_address) - 1] = '\0';
+}
+
+/*
+ * Configure the API key for bearer token authentication.
+ * Pass an empty string to disable authentication.
+ */
+EXPORT void ConfigureApiKey(const char* key)
+{
+    if (key == NULL)
+    {
+        s_api_key[0] = '\0';
+        return;
+    }
+    strncpy(s_api_key, key, sizeof(s_api_key) - 1);
+    s_api_key[sizeof(s_api_key) - 1] = '\0';
+}
+
+/*
+ * Configure TLS with PEM-encoded certificate and private key.
+ * Both must be provided to enable TLS.
+ */
+EXPORT void ConfigureTls(const char* cert_pem, const char* key_pem)
+{
+    if (cert_pem == NULL || key_pem == NULL ||
+        cert_pem[0] == '\0' || key_pem[0] == '\0')
+    {
+        s_tls_enabled = 0;
+        s_tls_cert[0] = '\0';
+        s_tls_key[0] = '\0';
+        return;
+    }
+    strncpy(s_tls_cert, cert_pem, sizeof(s_tls_cert) - 1);
+    s_tls_cert[sizeof(s_tls_cert) - 1] = '\0';
+    strncpy(s_tls_key, key_pem, sizeof(s_tls_key) - 1);
+    s_tls_key[sizeof(s_tls_key) - 1] = '\0';
+    s_tls_enabled = 1;
+}
+
+/*
+ * Check if the native proxy was compiled with TLS support.
+ */
+EXPORT int GetTlsSupported(void)
+{
+#if MG_TLS != MG_TLS_NONE
+    return 1;
+#else
+    return 0;
+#endif
+}
+
+/*
  * DLL/shared library unload cleanup.
  *
- * When Unity reloads the native plugin (e.g. package update), the old DLL is
- * unloaded while its server thread may still be running. Without cleanup, the
- * listen socket leaks and the new DLL can never bind to the same port.
+ * Called when the process exits (DLL_PROCESS_DETACH / destructor).
+ * Note: Unity never unloads native plugins during the editor session —
+ * they persist until the editor process exits.
  *
- * We signal the thread to stop and give it time to close sockets. We cannot
- * call WaitForSingleObject/pthread_join here (loader lock on Windows), so a
- * brief sleep lets the thread's 10ms poll loop notice and run cleanup.
+ * We signal the server thread to stop and give it time to close sockets.
+ * We cannot call WaitForSingleObject/pthread_join here (loader lock on
+ * Windows), so a brief sleep lets the thread's 10ms poll loop notice
+ * and run cleanup.
  */
 #ifdef _WIN32
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)

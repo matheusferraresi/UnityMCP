@@ -18,7 +18,7 @@ fi
 
 # Build universal binary (arm64 + x86_64)
 echo "Compiling universal binary (arm64 + x86_64)..."
-clang -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
+clang -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
     proxy.c mongoose.c \
     -o UnityMCPProxy.bundle \
     -arch arm64 -arch x86_64 \

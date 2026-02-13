@@ -1,6 +1,7 @@
 # Unity MCP - AI Assistant Integration for Unity Editor
 
-![Unity 6+](https://img.shields.io/badge/Unity-6%2B-black?logo=unity)
+![Unity 2022.3+](https://img.shields.io/badge/Unity-2022.3%2B-black?logo=unity)
+![Unity 6 Compatible](https://img.shields.io/badge/Unity%206-Compatible-brightgreen?logo=unity)
 ![Release](https://img.shields.io/github/v/tag/Bluepuff71/UnityMCP?label=version)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-blue)
 
@@ -18,7 +19,7 @@ Model Context Protocol (MCP) server that enables AI assistants like Claude, Code
 
 ## Requirements
 
-- Unity 6 or later
+- Unity 2022.3 or later
 - Any MCP client: Claude Code, Claude Desktop, Codex, Cursor, or other AI assistants
 
 ## Installation
@@ -78,33 +79,35 @@ Unity MCP runs an HTTP server at `http://localhost:8080/`. Any MCP client with H
 
 *Note: Configurations for clients other than Claude Code have not been tested. Open a PR!*
 
-## How Unity Editor Automation Works
+## Architecture
 
-Unity MCP uses a native C plugin to maintain an HTTP server on a background thread, independent of Unity's C# scripting domain. This architecture ensures the AI assistant connection remains active during script recompilation.
+Unity MCP runs an HTTP server on a background thread using a C plugin that persists across Unity domain reloads. This ensures the AI assistant connection stays active even while Unity recompiles scripts.
 
 ```
 ┌─────────────────┐
 │  MCP Client     │
 │  (Claude, etc.) │
 └────────┬────────┘
-         │ HTTP
+         │ HTTP POST (JSON-RPC)
          ▼
 ┌─────────────────────────────────────┐
-│  Native Plugin (C)                  │
+│  Proxy Plugin (C)                   │
 │  - HTTP server on background thread │
-│  - Survives domain reloads          │
+│  - Persists across domain reloads   │
+│  - Buffers request, waits for       │
+│    response from C#                 │
 └────────┬────────────────────────────┘
-         │
+         │ Polling (EditorApplication.update)
          ▼
 ┌─────────────────────────────────────┐
-│  Unity C# (main thread)             │
-│  - Executes tools when available    │
-│  - Returns "recompiling" during     │
-│    domain reload                    │
+│  Unity C# (main thread)            │
+│  - Polls for pending requests       │
+│  - Routes to MCPServer handlers     │
+│  - Executes tools, reads resources  │
 └─────────────────────────────────────┘
 ```
 
-When Unity recompiles scripts, the C# domain unloads temporarily. During this time, the native plugin continues accepting HTTP connections, so AI assistants never experience a dropped connection. Any in-flight requests receive a transient error asking the client to retry. Once recompilation completes, the C# callback is re-registered and requests resume normally.
+**During script recompilation**, the C# polling stops and the plugin holds incoming requests until the domain reload completes. The AI assistant sees a brief delay rather than a disconnection.
 
 ## Available MCP Tools
 

@@ -14,80 +14,15 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
-    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build Windows DLL
-        shell: bash
-        run: |
-          cd NativeProxy~
-          gcc -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
-            proxy.c mongoose.c \
-            -o UnityMCPProxy.dll \
-            -lws2_32
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-plugin
-          path: NativeProxy~/UnityMCPProxy.dll
-
-  build-macos:
-    runs-on: macos-latest
-    if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Build macOS Bundle (Universal)
-        run: |
-          cd NativeProxy~
-          clang -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
-            proxy.c mongoose.c \
-            -o UnityMCPProxy.bundle \
-            -arch arm64 -arch x86_64 \
-            -framework CoreFoundation -framework Security
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-plugin
-          path: NativeProxy~/UnityMCPProxy.bundle
-
-  build-linux:
+  version:
     runs-on: ubuntu-latest
     if: github.event.pull_request.merged == true || github.event_name == 'workflow_dispatch'
+    outputs:
+      version: ${{ steps.version.outputs.version }}
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build Linux Shared Library
-        run: |
-          cd NativeProxy~
-          gcc -shared -fPIC -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
-            proxy.c mongoose.c \
-            -o libUnityMCPProxy.so \
-            -lpthread
-
-      - uses: actions/upload-artifact@v4
         with:
-          name: linux-plugin
-          path: NativeProxy~/libUnityMCPProxy.so
-
-  release:
-    needs: [build-windows, build-macos, build-linux]
-    runs-on: ubuntu-latest
-    steps:
-      - name: Generate App token
-        id: app-token
-        uses: actions/create-github-app-token@v1
-        with:
-          app-id: ${{ secrets.APP_ID }}
-          private-key: ${{ secrets.APP_PRIVATE_KEY }}
-
-      - uses: actions/checkout@v4
-        with:
-          token: ${{ steps.app-token.outputs.token }}
-          ref: main
+          fetch-tags: true
 
       - name: Generate version
         id: version
@@ -121,6 +56,84 @@ jobs:
           echo "Selected version: $VERSION"
           echo "version=$VERSION" >> $GITHUB_OUTPUT
 
+  build-windows:
+    needs: [version]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Windows DLL
+        shell: bash
+        run: |
+          cd Proxy~
+          gcc -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
+            -DPROXY_VERSION="\"${{ needs.version.outputs.version }}\"" \
+            proxy.c mongoose.c \
+            -o UnityMCPProxy.dll \
+            -lws2_32
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-plugin
+          path: Proxy~/UnityMCPProxy.dll
+
+  build-macos:
+    needs: [version]
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build macOS Bundle (Universal)
+        run: |
+          cd Proxy~
+          clang -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
+            -DPROXY_VERSION="\"${{ needs.version.outputs.version }}\"" \
+            proxy.c mongoose.c \
+            -o UnityMCPProxy.bundle \
+            -arch arm64 -arch x86_64 \
+            -framework CoreFoundation -framework Security
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-plugin
+          path: Proxy~/UnityMCPProxy.bundle
+
+  build-linux:
+    needs: [version]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Linux Shared Library
+        run: |
+          cd Proxy~
+          gcc -shared -fPIC -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
+            -DPROXY_VERSION="\"${{ needs.version.outputs.version }}\"" \
+            proxy.c mongoose.c \
+            -o libUnityMCPProxy.so \
+            -lpthread
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-plugin
+          path: Proxy~/libUnityMCPProxy.so
+
+  release:
+    needs: [version, build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate App token
+        id: app-token
+        uses: actions/create-github-app-token@v1
+        with:
+          app-id: ${{ secrets.APP_ID }}
+          private-key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v4
+        with:
+          token: ${{ steps.app-token.outputs.token }}
+          ref: main
+
       - name: Download Windows artifact
         uses: actions/download-artifact@v4
         with:
@@ -141,7 +154,7 @@ jobs:
 
       - name: Update version strings
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
+          VERSION="${{ needs.version.outputs.version }}"
           sed -i 's/"version": "[^"]*"/"version": "'"$VERSION"'"/' Package/package.json
           sed -i 's/const string ServerVersion = "[^"]*"/const string ServerVersion = "'"$VERSION"'"/' Package/Editor/Core/MCPServer.cs
 
@@ -161,7 +174,7 @@ jobs:
           if git diff --staged --quiet; then
             echo "No changes to commit, skipping release"
           else
-            VERSION="${{ steps.version.outputs.version }}"
+            VERSION="${{ needs.version.outputs.version }}"
 
             # Check if tag already exists
             if git rev-parse "$VERSION" >/dev/null 2>&1; then

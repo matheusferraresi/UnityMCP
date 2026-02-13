@@ -14,12 +14,16 @@ namespace UnityMCP.Editor.UI
     public class MCPServerWindow : EditorWindow
     {
         private Vector2 _toolListScrollPosition;
+        private Vector2 _activityScrollPosition;
         private int _portInput;
         private string _lastError;
         private Dictionary<string, bool> _categoryFoldouts = new Dictionary<string, bool>();
+        private bool _remoteAccessFoldout = false;
+        private bool _activityFoldout = true;
 
         private const string DocumentationUrl = "https://github.com/anthropics/anthropic-cookbook/tree/main/misc/model_context_protocol";
         private const string VerboseLoggingPrefKey = "UnityMCP_VerboseLogging";
+        private const string ActivityDetailPrefKey = "UnityMCP_ActivityDetail";
 
         [MenuItem("Window/Unity MCP")]
         public static void ShowWindow()
@@ -31,7 +35,18 @@ namespace UnityMCP.Editor.UI
         private void OnEnable()
         {
             _portInput = MCPServer.Instance.Port;
-            NativeProxy.VerboseLogging = EditorPrefs.GetBool(VerboseLoggingPrefKey, false);
+            MCPProxy.VerboseLogging = EditorPrefs.GetBool(VerboseLoggingPrefKey, false);
+            ActivityLog.OnEntryAdded += OnActivityEntryAdded;
+        }
+
+        private void OnDisable()
+        {
+            ActivityLog.OnEntryAdded -= OnActivityEntryAdded;
+        }
+
+        private void OnActivityEntryAdded()
+        {
+            Repaint();
         }
 
         /// <summary>
@@ -45,6 +60,11 @@ namespace UnityMCP.Editor.UI
 
         private void OnGUI()
         {
+            if (MCPProxy.NeedsRestart)
+            {
+                DrawRestartBanner();
+            }
+
             DrawToolbar();
 
             EditorGUILayout.Space(8);
@@ -62,30 +82,25 @@ namespace UnityMCP.Editor.UI
 
             EditorGUILayout.Space(12);
 
+            DrawRemoteAccessSection();
+
+            EditorGUILayout.Space(12);
+
+            DrawActivitySection();
+
+            EditorGUILayout.Space(12);
+
             DrawToolsSection();
         }
 
         private void DrawToolbar()
         {
-            // Server is running if either native proxy or managed server is active
-            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
+            bool isRunning = MCPProxy.IsInitialized;
 
             EditorGUILayout.BeginHorizontal(EditorStyles.toolbar);
 
             // Status indicator
-            string statusText;
-            if (NativeProxy.IsInitialized)
-            {
-                statusText = "\u25CF Running - Native";
-            }
-            else if (MCPServer.Instance?.IsRunning ?? false)
-            {
-                statusText = "\u25CF Running - Fallback";
-            }
-            else
-            {
-                statusText = "\u25CB Stopped";
-            }
+            string statusText = isRunning ? "\u25CF Running" : "\u25CB Stopped";
 
             GUI.color = isRunning ? Color.green : Color.gray;
             GUILayout.Label(statusText, EditorStyles.boldLabel, GUILayout.Width(140));
@@ -116,15 +131,11 @@ namespace UnityMCP.Editor.UI
             {
                 if (isCurrentlyRunning)
                 {
-                    // Stop both native proxy and managed server
-                    NativeProxy.Stop();
-                    MCPServer.Instance.Stop();
+                    MCPProxy.Stop();
                 }
                 else
                 {
-                    // Try native proxy first, then fall back to managed server
-                    NativeProxy.Start();
-                    MCPServer.Instance.Start();
+                    MCPProxy.Start();
                 }
             }
             catch (Exception exception)
@@ -136,9 +147,19 @@ namespace UnityMCP.Editor.UI
 
         private void DrawServerInfo()
         {
-            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
+            bool isRunning = MCPProxy.IsInitialized;
             int port = MCPServer.Instance?.Port ?? 8080;
-            string endpoint = $"http://localhost:{port}/";
+
+            string endpoint;
+            if (MCPProxy.RemoteAccessEnabled)
+            {
+                string lanIp = NetworkUtils.GetLanIpAddress();
+                endpoint = $"https://{lanIp}:{port}/";
+            }
+            else
+            {
+                endpoint = $"http://localhost:{port}/";
+            }
 
             EditorGUILayout.LabelField("Server Information", EditorStyles.boldLabel);
 
@@ -150,7 +171,7 @@ namespace UnityMCP.Editor.UI
             if (GUILayout.Button("Copy", GUILayout.Width(50)))
             {
                 EditorGUIUtility.systemCopyBuffer = endpoint;
-                if (NativeProxy.VerboseLogging) Debug.Log($"[MCPServerWindow] Copied endpoint to clipboard: {endpoint}");
+                if (MCPProxy.VerboseLogging) Debug.Log($"[MCPServerWindow] Copied endpoint to clipboard: {endpoint}");
             }
             EditorGUILayout.EndHorizontal();
 
@@ -165,7 +186,7 @@ namespace UnityMCP.Editor.UI
 
         private void DrawPortConfiguration()
         {
-            bool isRunning = NativeProxy.IsInitialized || (MCPServer.Instance?.IsRunning ?? false);
+            bool isRunning = MCPProxy.IsInitialized;
 
             EditorGUILayout.LabelField("Configuration", EditorStyles.boldLabel);
 
@@ -183,7 +204,7 @@ namespace UnityMCP.Editor.UI
                 if (_portInput > 0 && _portInput <= 65535)
                 {
                     MCPServer.Instance.Port = _portInput;
-                    if (NativeProxy.VerboseLogging) Debug.Log($"[MCPServerWindow] Port changed to {_portInput}");
+                    if (MCPProxy.VerboseLogging) Debug.Log($"[MCPServerWindow] Port changed to {_portInput}");
                 }
                 else
                 {
@@ -202,20 +223,165 @@ namespace UnityMCP.Editor.UI
 
             // Verbose logging toggle (always enabled)
             EditorGUILayout.Space(4);
-            bool verboseLogging = EditorGUILayout.Toggle("Verbose Logging", NativeProxy.VerboseLogging);
-            if (verboseLogging != NativeProxy.VerboseLogging)
+            bool verboseLogging = EditorGUILayout.Toggle("Verbose Logging", MCPProxy.VerboseLogging);
+            if (verboseLogging != MCPProxy.VerboseLogging)
             {
-                NativeProxy.VerboseLogging = verboseLogging;
+                MCPProxy.VerboseLogging = verboseLogging;
                 EditorPrefs.SetBool(VerboseLoggingPrefKey, verboseLogging);
             }
 
             EditorGUI.indentLevel--;
         }
 
+        private void DrawRestartBanner()
+        {
+            EditorGUILayout.HelpBox(
+                "Unity MCP has been updated. Restart the editor to load the new version.",
+                MessageType.Warning);
+
+            if (GUILayout.Button("Restart Editor"))
+            {
+                EditorApplication.OpenProject(System.IO.Directory.GetCurrentDirectory());
+            }
+
+            EditorGUILayout.Space(4);
+        }
+
         private void DrawErrorMessage()
         {
             EditorGUILayout.Space(4);
             EditorGUILayout.HelpBox(_lastError, MessageType.Error);
+        }
+
+        private void DrawRemoteAccessSection()
+        {
+            _remoteAccessFoldout = EditorGUILayout.Foldout(_remoteAccessFoldout, "Remote Access", true, EditorStyles.foldoutHeader);
+
+            if (!_remoteAccessFoldout)
+                return;
+
+            EditorGUI.indentLevel++;
+
+            // Enable toggle
+            bool remoteEnabled = MCPProxy.RemoteAccessEnabled;
+            bool newRemoteEnabled = EditorGUILayout.Toggle("Enable Remote Access", remoteEnabled);
+            if (newRemoteEnabled != remoteEnabled)
+            {
+                MCPProxy.RemoteAccessEnabled = newRemoteEnabled;
+                MCPProxy.Restart();
+            }
+
+            if (MCPProxy.RemoteAccessEnabled)
+            {
+                EditorGUILayout.Space(4);
+
+                // API Key display
+                EditorGUILayout.BeginHorizontal();
+                string apiKey = MCPProxy.ApiKey;
+                string displayKey = string.IsNullOrEmpty(apiKey)
+                    ? "(none)"
+                    : (apiKey.Length > 20 ? apiKey.Substring(0, 20) + "..." : apiKey);
+                EditorGUILayout.LabelField("API Key", displayKey);
+
+                if (GUILayout.Button("Copy", GUILayout.Width(50)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = apiKey;
+                }
+                if (GUILayout.Button("Regenerate", GUILayout.Width(80)))
+                {
+                    MCPProxy.ApiKey = MCPProxy.GenerateApiKey();
+                    MCPProxy.Restart();
+                }
+                EditorGUILayout.EndHorizontal();
+
+                // TLS status
+                string tlsStatus;
+                if (!MCPProxy.IsTlsSupported)
+                {
+                    tlsStatus = "Not available (native proxy compiled without TLS)";
+                }
+                else
+                {
+                    string certDir = CertificateGenerator.GetCertDirectory();
+                    var expiry = CertificateGenerator.GetCertificateExpiry(certDir);
+                    if (expiry.HasValue)
+                        tlsStatus = "Active (self-signed, expires " + expiry.Value.ToString("yyyy-MM-dd") + ")";
+                    else
+                        tlsStatus = "No certificate";
+                }
+                EditorGUILayout.LabelField("TLS", tlsStatus);
+
+                // Endpoint
+                int port = MCPServer.Instance?.Port ?? 8080;
+                string lanIp = NetworkUtils.GetLanIpAddress();
+                EditorGUILayout.LabelField("Endpoint", $"https://{lanIp}:{port}/");
+
+                EditorGUILayout.Space(4);
+
+                // Warning
+                EditorGUILayout.HelpBox(
+                    "Remote access binds to all network interfaces with TLS encryption and API key authentication. " +
+                    "Ensure your firewall is configured appropriately.",
+                    MessageType.Warning);
+            }
+
+            EditorGUI.indentLevel--;
+        }
+
+        private void DrawActivitySection()
+        {
+            EditorGUILayout.BeginHorizontal();
+            _activityFoldout = EditorGUILayout.Foldout(_activityFoldout, "Recent Activity", true, EditorStyles.foldoutHeader);
+
+            GUILayout.FlexibleSpace();
+
+            // Detail toggle
+            bool showDetail = EditorPrefs.GetBool(ActivityDetailPrefKey, false);
+            bool newShowDetail = GUILayout.Toggle(showDetail, "Detail", EditorStyles.miniButton, GUILayout.Width(50));
+            if (newShowDetail != showDetail)
+                EditorPrefs.SetBool(ActivityDetailPrefKey, newShowDetail);
+
+            if (GUILayout.Button("Clear", EditorStyles.miniButton, GUILayout.Width(40)))
+                ActivityLog.Clear();
+
+            EditorGUILayout.EndHorizontal();
+
+            if (!_activityFoldout)
+                return;
+
+            var entries = ActivityLog.Entries;
+            if (entries.Count == 0)
+            {
+                EditorGUI.indentLevel++;
+                EditorGUILayout.LabelField("No activity recorded yet.", EditorStyles.miniLabel);
+                EditorGUI.indentLevel--;
+                return;
+            }
+
+            _activityScrollPosition = EditorGUILayout.BeginScrollView(
+                _activityScrollPosition, GUILayout.MaxHeight(160));
+
+            // Show newest first
+            for (int i = entries.Count - 1; i >= 0; i--)
+            {
+                var entry = entries[i];
+                string time = entry.timestamp.ToString("HH:mm:ss");
+                string status = entry.success ? "OK" : "FAIL";
+                string line;
+
+                if (newShowDetail && !string.IsNullOrEmpty(entry.detail))
+                    line = $"[{time}] {entry.toolName} ({entry.detail}) \u2192 {status}";
+                else
+                    line = $"[{time}] {entry.toolName} \u2192 {status}";
+
+                if (!entry.success)
+                    GUI.color = new Color(1f, 0.6f, 0.6f);
+
+                EditorGUILayout.LabelField(line, EditorStyles.miniLabel);
+                GUI.color = Color.white;
+            }
+
+            EditorGUILayout.EndScrollView();
         }
 
         private void DrawToolsSection()
@@ -323,7 +489,7 @@ namespace UnityMCP.Editor.UI
             try
             {
                 ToolRegistry.RefreshTools();
-                if (NativeProxy.VerboseLogging) Debug.Log("[MCPServerWindow] Tools refreshed");
+                if (MCPProxy.VerboseLogging) Debug.Log("[MCPServerWindow] Tools refreshed");
             }
             catch (Exception exception)
             {
