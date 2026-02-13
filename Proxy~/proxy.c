@@ -519,15 +519,24 @@ EXPORT unsigned long GetNativeProcessId(void)
 }
 
 /*
+ * Get the version string embedded at compile time.
+ */
+EXPORT const char* GetProxyVersion(void)
+{
+    return PROXY_VERSION;
+}
+
+/*
  * DLL/shared library unload cleanup.
  *
- * When Unity reloads the plugin (e.g. package update), the old DLL is
- * unloaded while its server thread may still be running. Without cleanup, the
- * listen socket leaks and the new DLL can never bind to the same port.
+ * Called when the process exits (DLL_PROCESS_DETACH / destructor).
+ * Note: Unity never unloads native plugins during the editor session —
+ * they persist until the editor process exits.
  *
- * We signal the thread to stop and give it time to close sockets. We cannot
- * call WaitForSingleObject/pthread_join here (loader lock on Windows), so a
- * brief sleep lets the thread's 10ms poll loop notice and run cleanup.
+ * We signal the server thread to stop and give it time to close sockets.
+ * We cannot call WaitForSingleObject/pthread_join here (loader lock on
+ * Windows), so a brief sleep lets the thread's 10ms poll loop notice
+ * and run cleanup.
  */
 #ifdef _WIN32
 BOOL WINAPI DllMain(HINSTANCE hinstDLL, DWORD fdwReason, LPVOID lpvReserved)

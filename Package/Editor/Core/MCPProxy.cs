@@ -1,6 +1,5 @@
 using System;
 using System.Runtime.InteropServices;
-using System.Threading;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -20,8 +19,6 @@ namespace UnityMCP.Editor.Core
     {
         private const string DLL_NAME = "UnityMCPProxy";
         private const int DEFAULT_PORT = 8080;
-        private const int STARTUP_RETRY_DELAY_MS = 200;
-        private const int MAX_START_RETRIES = 5;
 
         /// <summary>
         /// Maximum response size supported by the proxy buffer.
@@ -47,12 +44,21 @@ namespace UnityMCP.Editor.Core
         [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
         private static extern void SendResponse([MarshalAs(UnmanagedType.LPStr)] string json);
 
+        [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+        private static extern IntPtr GetProxyVersion();
+
         #endregion
 
         /// <summary>
         /// Tracks whether the proxy has been successfully initialized.
         /// </summary>
         private static bool s_initialized = false;
+
+        /// <summary>
+        /// True when the loaded native DLL version doesn't match the C# package version.
+        /// This happens after a package update before restarting the editor.
+        /// </summary>
+        public static bool NeedsRestart { get; private set; } = false;
 
         /// <summary>
         /// Gets whether the MCP proxy is currently active.
@@ -112,7 +118,6 @@ namespace UnityMCP.Editor.Core
 
         /// <summary>
         /// Initializes the proxy by starting the server and activating polling.
-        /// If the port is temporarily held (e.g. old DLL being unloaded), retries with delays.
         /// </summary>
         private static void Initialize()
         {
@@ -124,26 +129,10 @@ namespace UnityMCP.Editor.Core
             try
             {
                 int result = StartServer(DEFAULT_PORT);
-
-                // If failed to bind, retry with delays. The old DLL's DllMain cleanup
-                // may need a moment to close the listen socket before we can bind.
                 if (result < 0)
                 {
-                    for (int retry = 0; retry < MAX_START_RETRIES; retry++)
-                    {
-                        Thread.Sleep(STARTUP_RETRY_DELAY_MS);
-                        result = StartServer(DEFAULT_PORT);
-                        if (result >= 0)
-                        {
-                            break;
-                        }
-                    }
-
-                    if (result < 0)
-                    {
-                        Debug.LogWarning($"[MCPProxy] Failed to start server (result={result}).");
-                        return;
-                    }
+                    Debug.LogWarning($"[MCPProxy] Failed to bind to port {DEFAULT_PORT}. Is another instance running?");
+                    return;
                 }
 
                 // Activate polling and hook into EditorApplication.update
@@ -158,6 +147,10 @@ namespace UnityMCP.Editor.Core
                 Application.runInBackground = true;
 
                 s_initialized = true;
+
+                // Check for version mismatch (stale DLL after package update)
+                CheckVersionMismatch();
+
                 if (VerboseLogging) Debug.Log($"[MCPProxy] MCP proxy initialized on port {DEFAULT_PORT}");
             }
             catch (DllNotFoundException dllException)
@@ -249,6 +242,41 @@ namespace UnityMCP.Editor.Core
             }
 
             s_initialized = false;
+        }
+
+        /// <summary>
+        /// Compares the native DLL version with the C# package version.
+        /// A mismatch indicates the package was updated but the editor hasn't been restarted,
+        /// so the old DLL is still loaded in memory.
+        /// </summary>
+        private static void CheckVersionMismatch()
+        {
+            try
+            {
+                IntPtr versionPtr = GetProxyVersion();
+                if (versionPtr == IntPtr.Zero) return;
+
+                string nativeVersion = Marshal.PtrToStringAnsi(versionPtr);
+                if (string.IsNullOrEmpty(nativeVersion) || nativeVersion == "dev") return;
+
+                string expectedVersion = MCPServer.ServerVersion;
+                if (nativeVersion != expectedVersion)
+                {
+                    NeedsRestart = true;
+                    Debug.LogWarning(
+                        $"[Unity MCP] Update detected (v{nativeVersion} -> v{expectedVersion}). " +
+                        "Please restart the Unity Editor to complete the update. " +
+                        "(Window > Unity MCP for details)");
+                }
+            }
+            catch (EntryPointNotFoundException)
+            {
+                // Old DLL without GetProxyVersion — needs restart
+                NeedsRestart = true;
+                Debug.LogWarning(
+                    "[Unity MCP] Package was updated. Please restart the Unity Editor to complete the update. " +
+                    "(Window > Unity MCP for details)");
+            }
         }
 
         /// <summary>
