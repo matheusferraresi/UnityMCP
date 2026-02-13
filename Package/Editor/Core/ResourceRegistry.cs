@@ -143,15 +143,23 @@ namespace UnityMCP.Editor.Core
         }
 
         /// <summary>
-        /// Gets all resource definitions for the MCP resources/list response.
-        /// Includes both static resources and parameterized URI templates.
+        /// Gets static resource definitions for the MCP resources/list response.
+        /// Only includes non-parameterized resources (parameterized ones go in templates/list).
         /// </summary>
         public static IEnumerable<ResourceDefinition> GetDefinitions()
         {
             EnsureInitialized();
-            var staticDefinitions = _resources.Values.Select(resourceInfo => resourceInfo.ToDefinition());
-            var parameterizedDefinitions = _parameterizedResources.Select(resourceInfo => resourceInfo.ToDefinition());
-            return staticDefinitions.Concat(parameterizedDefinitions);
+            return _resources.Values.Select(resourceInfo => resourceInfo.ToDefinition());
+        }
+
+        /// <summary>
+        /// Gets resource template definitions for the MCP resources/templates/list response.
+        /// Only includes parameterized URI templates (e.g., "scene://gameobject/{id}").
+        /// </summary>
+        public static IEnumerable<ResourceTemplate> GetTemplateDefinitions()
+        {
+            EnsureInitialized();
+            return _parameterizedResources.Select(resourceInfo => resourceInfo.ToTemplate());
         }
 
         /// <summary>
@@ -336,10 +344,24 @@ namespace UnityMCP.Editor.Core
         /// </summary>
         public ResourceDefinition ToDefinition()
         {
-            // Extract a name from the URI (last segment after ://)
             string name = ExtractNameFromUri(_attribute.Uri);
 
             return new ResourceDefinition(
+                _attribute.Uri,
+                name,
+                _attribute.Description,
+                "application/json"
+            );
+        }
+
+        /// <summary>
+        /// Creates a ResourceTemplate for the MCP resources/templates/list response.
+        /// </summary>
+        public ResourceTemplate ToTemplate()
+        {
+            string name = ExtractNameFromUri(_attribute.Uri);
+
+            return new ResourceTemplate(
                 _attribute.Uri,
                 name,
                 _attribute.Description,

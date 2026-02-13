@@ -129,6 +129,7 @@ namespace UnityMCP.Editor.Core
                     "tools/list" => HandleToolsList(requestId),
                     "tools/call" => HandleToolsCall(paramsToken, requestId),
                     "resources/list" => HandleResourcesList(requestId),
+                    "resources/templates/list" => HandleResourcesTemplatesList(requestId),
                     "resources/read" => HandleResourcesRead(paramsToken, requestId),
                     "prompts/list" => HandlePromptsList(requestId),
                     "prompts/get" => HandlePromptsGet(paramsToken, requestId),
@@ -450,6 +451,31 @@ namespace UnityMCP.Editor.Core
             var result = new JObject
             {
                 ["resources"] = resourcesArray
+            };
+
+            return CreateSuccessResponse(result, requestId);
+        }
+
+        private JObject HandleResourcesTemplatesList(string requestId)
+        {
+            var templateDefinitions = ResourceRegistry.GetTemplateDefinitions().ToList();
+            var templatesArray = new JArray();
+
+            foreach (var template in templateDefinitions)
+            {
+                var templateObject = new JObject
+                {
+                    ["uriTemplate"] = template.uriTemplate,
+                    ["name"] = template.name,
+                    ["description"] = template.description,
+                    ["mimeType"] = template.mimeType ?? "application/json"
+                };
+                templatesArray.Add(templateObject);
+            }
+
+            var result = new JObject
+            {
+                ["resourceTemplates"] = templatesArray
             };
 
             return CreateSuccessResponse(result, requestId);
