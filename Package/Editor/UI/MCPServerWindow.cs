@@ -18,6 +18,7 @@ namespace UnityMCP.Editor.UI
         private int _portInput;
         private string _lastError;
         private Dictionary<string, bool> _categoryFoldouts = new Dictionary<string, bool>();
+        private bool _remoteAccessFoldout = false;
         private bool _activityFoldout = true;
 
         private const string DocumentationUrl = "https://github.com/anthropics/anthropic-cookbook/tree/main/misc/model_context_protocol";
@@ -78,6 +79,10 @@ namespace UnityMCP.Editor.UI
             {
                 DrawErrorMessage();
             }
+
+            EditorGUILayout.Space(12);
+
+            DrawRemoteAccessSection();
 
             EditorGUILayout.Space(12);
 
@@ -144,7 +149,17 @@ namespace UnityMCP.Editor.UI
         {
             bool isRunning = MCPProxy.IsInitialized;
             int port = MCPServer.Instance?.Port ?? 8080;
-            string endpoint = $"http://localhost:{port}/";
+
+            string endpoint;
+            if (MCPProxy.RemoteAccessEnabled)
+            {
+                string lanIp = NetworkUtils.GetLanIpAddress();
+                endpoint = $"https://{lanIp}:{port}/";
+            }
+            else
+            {
+                endpoint = $"http://localhost:{port}/";
+            }
 
             EditorGUILayout.LabelField("Server Information", EditorStyles.boldLabel);
 
@@ -236,6 +251,81 @@ namespace UnityMCP.Editor.UI
         {
             EditorGUILayout.Space(4);
             EditorGUILayout.HelpBox(_lastError, MessageType.Error);
+        }
+
+        private void DrawRemoteAccessSection()
+        {
+            _remoteAccessFoldout = EditorGUILayout.Foldout(_remoteAccessFoldout, "Remote Access", true, EditorStyles.foldoutHeader);
+
+            if (!_remoteAccessFoldout)
+                return;
+
+            EditorGUI.indentLevel++;
+
+            // Enable toggle
+            bool remoteEnabled = MCPProxy.RemoteAccessEnabled;
+            bool newRemoteEnabled = EditorGUILayout.Toggle("Enable Remote Access", remoteEnabled);
+            if (newRemoteEnabled != remoteEnabled)
+            {
+                MCPProxy.RemoteAccessEnabled = newRemoteEnabled;
+                MCPProxy.Restart();
+            }
+
+            if (MCPProxy.RemoteAccessEnabled)
+            {
+                EditorGUILayout.Space(4);
+
+                // API Key display
+                EditorGUILayout.BeginHorizontal();
+                string apiKey = MCPProxy.ApiKey;
+                string displayKey = string.IsNullOrEmpty(apiKey)
+                    ? "(none)"
+                    : (apiKey.Length > 20 ? apiKey.Substring(0, 20) + "..." : apiKey);
+                EditorGUILayout.LabelField("API Key", displayKey);
+
+                if (GUILayout.Button("Copy", GUILayout.Width(50)))
+                {
+                    EditorGUIUtility.systemCopyBuffer = apiKey;
+                }
+                if (GUILayout.Button("Regenerate", GUILayout.Width(80)))
+                {
+                    MCPProxy.ApiKey = MCPProxy.GenerateApiKey();
+                    MCPProxy.Restart();
+                }
+                EditorGUILayout.EndHorizontal();
+
+                // TLS status
+                string tlsStatus;
+                if (!MCPProxy.IsTlsSupported)
+                {
+                    tlsStatus = "Not available (native proxy compiled without TLS)";
+                }
+                else
+                {
+                    string certDir = CertificateGenerator.GetCertDirectory();
+                    var expiry = CertificateGenerator.GetCertificateExpiry(certDir);
+                    if (expiry.HasValue)
+                        tlsStatus = "Active (self-signed, expires " + expiry.Value.ToString("yyyy-MM-dd") + ")";
+                    else
+                        tlsStatus = "No certificate";
+                }
+                EditorGUILayout.LabelField("TLS", tlsStatus);
+
+                // Endpoint
+                int port = MCPServer.Instance?.Port ?? 8080;
+                string lanIp = NetworkUtils.GetLanIpAddress();
+                EditorGUILayout.LabelField("Endpoint", $"https://{lanIp}:{port}/");
+
+                EditorGUILayout.Space(4);
+
+                // Warning
+                EditorGUILayout.HelpBox(
+                    "Remote access binds to all network interfaces with TLS encryption and API key authentication. " +
+                    "Ensure your firewall is configured appropriately.",
+                    MessageType.Warning);
+            }
+
+            EditorGUI.indentLevel--;
         }
 
         private void DrawActivitySection()

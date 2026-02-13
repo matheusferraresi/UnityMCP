@@ -18,7 +18,7 @@ fi
 
 # Build shared library
 echo "Compiling shared library..."
-gcc -shared -fPIC -O2 -DNDEBUG -DMG_ENABLE_LINES=0 \
+gcc -shared -fPIC -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
     proxy.c mongoose.c \
     -o libUnityMCPProxy.so \
     -lpthread

@@ -114,6 +114,43 @@ EXPORT unsigned long GetNativeProcessId(void);
  */
 EXPORT const char* GetProxyVersion(void);
 
+/*
+ * Configure the bind address for the server.
+ * Must be called before StartServer().
+ * Defaults to "127.0.0.1" (localhost only).
+ * Use "0.0.0.0" for remote access.
+ *
+ * @param address The IP address to bind to
+ */
+EXPORT void ConfigureBindAddress(const char* address);
+
+/*
+ * Configure the API key for bearer token authentication.
+ * Must be called before StartServer().
+ * Pass an empty string to disable authentication.
+ *
+ * @param key The API key string (e.g., "umcp_...")
+ */
+EXPORT void ConfigureApiKey(const char* key);
+
+/*
+ * Configure TLS with PEM-encoded certificate and private key.
+ * Must be called before StartServer().
+ * Both cert and key must be provided to enable TLS.
+ *
+ * @param cert_pem PEM-encoded certificate
+ * @param key_pem PEM-encoded private key
+ */
+EXPORT void ConfigureTls(const char* cert_pem, const char* key_pem);
+
+/*
+ * Check if the native proxy was compiled with TLS support.
+ * Used by C# to detect builds without -DMG_TLS=MG_TLS_BUILTIN.
+ *
+ * @return 1 if TLS is supported, 0 if not
+ */
+EXPORT int GetTlsSupported(void);
+
 #ifdef __cplusplus
 }
 #endif
