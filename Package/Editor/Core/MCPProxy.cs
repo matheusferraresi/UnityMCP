@@ -8,19 +8,15 @@ using Debug = UnityEngine.Debug;
 namespace UnityMCP.Editor.Core
 {
     /// <summary>
-    /// Delegate for receiving JSON-RPC requests from the native proxy.
-    /// Must use Cdecl calling convention to match the native plugin.
-    /// </summary>
-    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
-    internal delegate void RequestCallback([MarshalAs(UnmanagedType.LPStr)] string jsonRequest);
-
-    /// <summary>
-    /// P/Invoke bindings for the native MCP proxy plugin.
-    /// The native plugin maintains an HTTP server that survives domain reloads,
+    /// P/Invoke bindings and polling loop for the MCP proxy plugin.
+    /// The plugin maintains an HTTP server that survives domain reloads,
     /// ensuring AI assistants never receive connection errors during Unity recompilation.
+    ///
+    /// C# polls for pending requests via EditorApplication.update, eliminating
+    /// ThreadAbortException by keeping all managed code on the main thread.
     /// </summary>
     [InitializeOnLoad]
-    public static class NativeProxy
+    public static class MCPProxy
     {
         private const string DLL_NAME = "UnityMCPProxy";
         private const int DEFAULT_PORT = 8080;
@@ -28,7 +24,7 @@ namespace UnityMCP.Editor.Core
         private const int MAX_START_RETRIES = 5;
 
         /// <summary>
-        /// Maximum response size supported by the native proxy buffer.
+        /// Maximum response size supported by the proxy buffer.
         /// Must match PROXY_MAX_RESPONSE_SIZE in proxy.h.
         /// Responses exceeding this limit will trigger an error response.
         /// </summary>
@@ -43,7 +39,10 @@ namespace UnityMCP.Editor.Core
         private static extern void StopServer();
 
         [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
-        private static extern void RegisterCallback(RequestCallback callback);
+        private static extern void SetPollingActive(int active);
+
+        [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
+        private static extern IntPtr GetPendingRequest();
 
         [DllImport(DLL_NAME, CallingConvention = CallingConvention.Cdecl)]
         private static extern void SendResponse([MarshalAs(UnmanagedType.LPStr)] string json);
@@ -51,18 +50,12 @@ namespace UnityMCP.Editor.Core
         #endregion
 
         /// <summary>
-        /// Stored callback delegate to prevent garbage collection.
-        /// The native code holds a pointer to this delegate, so it must remain alive.
-        /// </summary>
-        private static RequestCallback s_callback;
-
-        /// <summary>
-        /// Tracks whether the native proxy has been successfully initialized.
+        /// Tracks whether the proxy has been successfully initialized.
         /// </summary>
         private static bool s_initialized = false;
 
         /// <summary>
-        /// Gets whether the native proxy is currently active.
+        /// Gets whether the MCP proxy is currently active.
         /// </summary>
         public static bool IsInitialized => s_initialized;
 
@@ -73,7 +66,7 @@ namespace UnityMCP.Editor.Core
         public static bool VerboseLogging { get; set; } = false;
 
         /// <summary>
-        /// Starts the native proxy server.
+        /// Starts the MCP proxy server.
         /// </summary>
         public static void Start()
         {
@@ -81,7 +74,7 @@ namespace UnityMCP.Editor.Core
         }
 
         /// <summary>
-        /// Stops the native proxy server and cleans up resources.
+        /// Stops the MCP proxy server and cleans up resources.
         /// </summary>
         public static void Stop()
         {
@@ -90,18 +83,19 @@ namespace UnityMCP.Editor.Core
                 return;
             }
 
+            EditorApplication.update -= PollForRequests;
             AssemblyReloadEvents.beforeAssemblyReload -= OnBeforeReload;
             EditorApplication.quitting -= OnQuit;
 
             try
             {
-                RegisterCallback(null);
+                SetPollingActive(0);
                 StopServer();
-                if (VerboseLogging) Debug.Log("[NativeProxy] Native MCP proxy stopped");
+                if (VerboseLogging) Debug.Log("[MCPProxy] MCP proxy stopped");
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"[NativeProxy] Error during stop: {exception.Message}");
+                Debug.LogWarning($"[MCPProxy] Error during stop: {exception.Message}");
             }
 
             s_initialized = false;
@@ -109,17 +103,16 @@ namespace UnityMCP.Editor.Core
 
         /// <summary>
         /// Static constructor called automatically by Unity due to [InitializeOnLoad].
-        /// Attempts to initialize the native proxy on editor startup and after domain reloads.
+        /// Attempts to initialize the proxy on editor startup and after domain reloads.
         /// </summary>
-        static NativeProxy()
+        static MCPProxy()
         {
             Initialize();
         }
 
         /// <summary>
-        /// Initializes the native proxy by starting the server and registering the callback.
+        /// Initializes the proxy by starting the server and activating polling.
         /// If the port is temporarily held (e.g. old DLL being unloaded), retries with delays.
-        /// Falls back gracefully if the native plugin is not available.
         /// </summary>
         private static void Initialize()
         {
@@ -148,16 +141,16 @@ namespace UnityMCP.Editor.Core
 
                     if (result < 0)
                     {
-                        Debug.LogWarning($"[NativeProxy] Failed to start native server (result={result}), falling back to managed server.");
+                        Debug.LogWarning($"[MCPProxy] Failed to start server (result={result}).");
                         return;
                     }
                 }
 
-                // Register callback - must store delegate to prevent GC collection
-                s_callback = OnRequest;
-                RegisterCallback(s_callback);
+                // Activate polling and hook into EditorApplication.update
+                SetPollingActive(1);
+                EditorApplication.update += PollForRequests;
 
-                // Register for domain unload to safely unregister callback before C# code becomes invalid
+                // Register for domain unload to safely deactivate polling before C# code becomes invalid
                 AssemblyReloadEvents.beforeAssemblyReload += OnBeforeReload;
                 EditorApplication.quitting += OnQuit;
 
@@ -165,69 +158,37 @@ namespace UnityMCP.Editor.Core
                 Application.runInBackground = true;
 
                 s_initialized = true;
-                if (VerboseLogging) Debug.Log($"[NativeProxy] Native MCP proxy initialized on port {DEFAULT_PORT}");
+                if (VerboseLogging) Debug.Log($"[MCPProxy] MCP proxy initialized on port {DEFAULT_PORT}");
             }
             catch (DllNotFoundException dllException)
             {
-                Debug.LogWarning($"[NativeProxy] Native plugin not found: {dllException.Message}. Falling back to managed server.");
+                Debug.LogWarning($"[MCPProxy] Plugin not found: {dllException.Message}.");
             }
             catch (EntryPointNotFoundException entryPointException)
             {
-                Debug.LogWarning($"[NativeProxy] Native plugin entry point not found: {entryPointException.Message}. Falling back to managed server.");
+                Debug.LogWarning($"[MCPProxy] Plugin entry point not found: {entryPointException.Message}.");
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"[NativeProxy] Failed to initialize native proxy: {exception.GetType().Name}: {exception.Message}. Falling back to managed server.");
+                Debug.LogWarning($"[MCPProxy] Failed to initialize proxy: {exception.GetType().Name}: {exception.Message}.");
                 Debug.LogException(exception);
             }
         }
 
         /// <summary>
-        /// Called before Unity reloads the C# domain (e.g., after script recompilation).
-        /// Unregisters the callback to prevent the native code from calling into invalid C# code.
+        /// Polls the proxy for pending requests on every editor update tick.
+        /// Runs on Unity's main thread, so no ThreadAbortException is possible.
         /// </summary>
-        private static void OnBeforeReload()
+        private static void PollForRequests()
         {
-            // Unregister callback before domain unloads to prevent native code calling invalid C# code
-            try
+            IntPtr ptr = GetPendingRequest();
+            if (ptr == IntPtr.Zero)
             {
-                RegisterCallback(null);
-            }
-            catch (Exception exception)
-            {
-                Debug.LogWarning($"[NativeProxy] Error unregistering callback: {exception.Message}");
-            }
-        }
-
-        /// <summary>
-        /// Called when the Unity Editor is quitting.
-        /// Cleans up by unregistering the callback and stopping the native server.
-        /// </summary>
-        private static void OnQuit()
-        {
-            try
-            {
-                RegisterCallback(null);
-                StopServer();
-            }
-            catch (Exception exception)
-            {
-                Debug.LogWarning($"[NativeProxy] Error during shutdown: {exception.Message}");
+                return;
             }
 
-            s_initialized = false;
-        }
-
-        /// <summary>
-        /// Callback invoked by the native proxy when an HTTP request is received.
-        /// Processes the JSON-RPC request through MCPServer and sends back the response.
-        /// Handles ThreadAbortException gracefully during domain reload.
-        /// </summary>
-        /// <param name="jsonRequest">The raw JSON-RPC request string from the client.</param>
-        private static void OnRequest(string jsonRequest)
-        {
+            string jsonRequest = Marshal.PtrToStringAnsi(ptr);
             string requestId = ExtractRequestId(jsonRequest);
-            bool responseSent = false;
 
             try
             {
@@ -235,49 +196,59 @@ namespace UnityMCP.Editor.Core
 
                 if (response != null && response.Length >= MaxResponseSize)
                 {
-                    Debug.LogWarning($"[NativeProxy] Response size ({response.Length} bytes) exceeds maximum ({MaxResponseSize} bytes). Returning error response.");
+                    Debug.LogWarning($"[MCPProxy] Response size ({response.Length} bytes) exceeds maximum ({MaxResponseSize} bytes). Returning error response.");
                     string errorResponse = BuildErrorResponse(
                         -32603,
                         $"Response too large ({response.Length} bytes). Maximum supported size is {MaxResponseSize - 1} bytes. Try reducing max_depth or using more specific queries.",
                         requestId);
                     SendResponse(errorResponse);
-                    responseSent = true;
                     return;
                 }
 
                 SendResponse(response);
-                responseSent = true;
-            }
-            catch (System.Threading.ThreadAbortException)
-            {
-                // Domain reload is aborting this thread
-                // Response will be sent in finally block
-                // ThreadAbortException re-throws automatically after finally
             }
             catch (Exception exception)
             {
                 string errorResponse = BuildErrorResponse(-32603, exception.Message, requestId);
                 SendResponse(errorResponse);
-                responseSent = true;
             }
-            finally
+        }
+
+        /// <summary>
+        /// Called before Unity reloads the C# domain (e.g., after script recompilation).
+        /// Deactivates polling to prevent request delivery during domain reload.
+        /// </summary>
+        private static void OnBeforeReload()
+        {
+            try
             {
-                if (!responseSent)
-                {
-                    try
-                    {
-                        string errorResponse = BuildErrorResponse(
-                            -32000,
-                            "Request interrupted by Unity domain reload. Please retry.",
-                            requestId);
-                        SendResponse(errorResponse);
-                    }
-                    catch
-                    {
-                        // Ignore - native fail-safe will handle this
-                    }
-                }
+                SetPollingActive(0);
+                EditorApplication.update -= PollForRequests;
             }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[MCPProxy] Error deactivating polling: {exception.Message}");
+            }
+        }
+
+        /// <summary>
+        /// Called when the Unity Editor is quitting.
+        /// Cleans up by deactivating polling and stopping the server.
+        /// </summary>
+        private static void OnQuit()
+        {
+            try
+            {
+                EditorApplication.update -= PollForRequests;
+                SetPollingActive(0);
+                StopServer();
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[MCPProxy] Error during shutdown: {exception.Message}");
+            }
+
+            s_initialized = false;
         }
 
         /// <summary>

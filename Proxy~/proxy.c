@@ -1,11 +1,11 @@
 /*
- * UnityMCP Native Proxy - Implementation
+ * UnityMCP Proxy - Implementation
  *
- * This native plugin provides an HTTP server that survives Unity domain reloads.
- * It acts as a proxy between the external MCP server and Unity's managed code.
+ * HTTP server plugin that survives Unity domain reloads.
+ * Acts as a proxy between external MCP clients and Unity's C# code.
  *
- * When C# is unavailable (during recompile), it blocks until the callback is re-registered.
- * When C# is available, it forwards requests via callback and waits for response.
+ * When C# is unavailable (during recompile), it blocks until polling is re-activated.
+ * When C# is available, it stores the request in a buffer and poll-waits for the response.
  *
  * License: GPLv2 (compatible with Mongoose library)
  */
@@ -35,14 +35,16 @@
 static struct mg_mgr s_mgr;
 static struct mg_connection* s_listener = NULL;
 static volatile int s_running = 0;
-static volatile int s_callback_valid = 0;
-static RequestCallback s_csharp_callback = NULL;
+static volatile int s_poller_active = 0;
 static ThreadHandle s_server_thread;
 
-/* Response buffer for synchronous C# callback */
+/* Request buffer for C# polling */
+static char s_request_buffer[PROXY_MAX_REQUEST_SIZE];
+static volatile int s_has_request = 0;
+
+/* Response buffer for synchronous C# response */
 static char s_response_buffer[PROXY_MAX_RESPONSE_SIZE];
 static volatile int s_has_response = 0;
-static volatile int s_call_in_progress = 0;
 
 /* Flag set by DllMain/destructor to signal the server thread to exit and clean up */
 static volatile int s_unloading = 0;
@@ -195,8 +197,8 @@ static DWORD WINAPI ServerThreadFunc(LPVOID param)
     if (s_unloading)
     {
         s_listener = NULL;
-        s_callback_valid = 0;
-        s_csharp_callback = NULL;
+        s_poller_active = 0;
+        s_has_request = 0;
         mg_mgr_free(&s_mgr);
     }
     return 0;
@@ -213,8 +215,8 @@ static void* ServerThreadFunc(void* param)
     if (s_unloading)
     {
         s_listener = NULL;
-        s_callback_valid = 0;
-        s_csharp_callback = NULL;
+        s_poller_active = 0;
+        s_has_request = 0;
         mg_mgr_free(&s_mgr);
     }
     return NULL;
@@ -227,8 +229,9 @@ static void* ServerThreadFunc(void* param)
  * This function processes the HTTP request:
  * 1. CORS preflight (OPTIONS) -> 204 No Content
  * 2. Non-POST methods -> 405 Method Not Allowed
- * 3. If callback not valid -> Block and poll until callback becomes valid
- * 4. Otherwise -> Call C# callback and wait for response
+ * 3. Request too large -> 413 error
+ * 4. If poller not active -> Block and poll until poller becomes active
+ * 5. Copy request to buffer, set s_has_request, poll-wait for s_has_response
  */
 static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_message* http_message)
 {
@@ -249,7 +252,7 @@ static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_m
         return;
     }
 
-    /* Extract request body with null termination */
+    /* Extract request body */
     size_t body_length = http_message->body.len;
     if (body_length == 0)
     {
@@ -259,80 +262,83 @@ static void HandleHttpRequest(struct mg_connection* connection, struct mg_http_m
         return;
     }
 
-    char* request_body = (char*)malloc(body_length + 1);
-    if (request_body == NULL)
+    /* Reject requests larger than the buffer */
+    if (body_length >= PROXY_MAX_REQUEST_SIZE)
     {
         mg_http_reply(connection, 200, CORS_HEADERS, "%s",
-            BuildErrorResponse(-32603, "Internal error: memory allocation failed", "null"));
+            BuildErrorResponse(-32600, "Request too large", "null"));
         return;
     }
 
-    memcpy(request_body, http_message->body.buf, body_length);
-    request_body[body_length] = '\0';
+    /* Copy request body to static buffer (no malloc) */
+    memcpy(s_request_buffer, http_message->body.buf, body_length);
+    s_request_buffer[body_length] = '\0';
 
     /* Extract the request ID for use in error responses */
-    const char* request_id = ExtractJsonRpcId(request_body, body_length);
+    const char* request_id = ExtractJsonRpcId(s_request_buffer, body_length);
 
-    /* Block and poll until callback becomes valid (handles domain reload) */
-    if (!s_callback_valid || s_csharp_callback == NULL)
+    /* Block and poll until poller becomes active (handles domain reload) */
+    if (!s_poller_active)
     {
         uint64_t poll_start_time = mg_millis();
-        while (!s_callback_valid)
+        while (!s_poller_active)
         {
             uint64_t elapsed_time = mg_millis() - poll_start_time;
             if (elapsed_time >= PROXY_REQUEST_TIMEOUT_MS)
             {
                 mg_http_reply(connection, 200, CORS_HEADERS, "%s",
                     BuildErrorResponse(-32000, "Unity recompilation timed out.", request_id));
-                free(request_body);
                 return;
             }
             if (!s_running)
             {
                 mg_http_reply(connection, 200, CORS_HEADERS, "%s",
                     BuildErrorResponse(-32000, "Server is shutting down.", request_id));
-                free(request_body);
                 return;
             }
             PROXY_SLEEP_MS(PROXY_RECOMPILE_POLL_INTERVAL_MS);
         }
-        /* Defensive null-check after poll loop exits */
-        if (s_csharp_callback == NULL)
+    }
+
+    /* Clear response state and signal request available */
+    s_has_response = 0;
+    s_response_buffer[0] = '\0';
+    s_has_request = 1;
+
+    /* Poll-wait for C# to process the request and call SendResponse() */
+    {
+        uint64_t wait_start_time = mg_millis();
+        while (!s_has_response)
         {
-            mg_http_reply(connection, 200, CORS_HEADERS, "%s",
-                BuildErrorResponse(-32000, "Callback became invalid after recompilation.", request_id));
-            free(request_body);
-            return;
+            uint64_t elapsed_time = mg_millis() - wait_start_time;
+            if (elapsed_time >= PROXY_REQUEST_TIMEOUT_MS)
+            {
+                s_has_request = 0;
+                mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+                    BuildErrorResponse(-32000, "Request processing timed out.", request_id));
+                return;
+            }
+            if (!s_running)
+            {
+                s_has_request = 0;
+                mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+                    BuildErrorResponse(-32000, "Server is shutting down.", request_id));
+                return;
+            }
+            if (!s_poller_active)
+            {
+                s_has_request = 0;
+                mg_http_reply(connection, 200, CORS_HEADERS, "%s",
+                    BuildErrorResponse(-32000, "Request interrupted by Unity domain reload. Please retry.", request_id));
+                return;
+            }
+            PROXY_SLEEP_MS(1);
         }
     }
 
-    /* Clear response state and mark call in progress */
-    s_has_response = 0;
-    s_response_buffer[0] = '\0';
-    s_call_in_progress = 1;
-
-    /*
-     * Call the C# callback synchronously from the server thread.
-     * C# handles main thread dispatch internally and calls SendResponse() before returning.
-     */
-    s_csharp_callback(request_body);
-
-    s_call_in_progress = 0;
-
-    free(request_body);
-    request_body = NULL;
-
-    /* Send the response - callback should have set it via SendResponse() */
-    if (s_has_response && s_response_buffer[0] != '\0')
-    {
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s", s_response_buffer);
-    }
-    else
-    {
-        /* No response - call was interrupted by domain reload */
-        mg_http_reply(connection, 200, CORS_HEADERS, "%s",
-            BuildErrorResponse(-32000, "Request interrupted by Unity domain reload. Please retry.", request_id));
-    }
+    /* Send the response */
+    s_has_request = 0;
+    mg_http_reply(connection, 200, CORS_HEADERS, "%s", s_response_buffer);
 }
 
 /*
@@ -425,23 +431,37 @@ EXPORT void StopServer(void)
 #endif
 
     s_listener = NULL;
-    s_callback_valid = 0;
-    s_csharp_callback = NULL;
+    s_poller_active = 0;
+    s_has_request = 0;
 
     mg_mgr_free(&s_mgr);
 }
 
 /*
- * Register the C# callback for handling requests.
+ * Activate or deactivate C# polling.
  */
-EXPORT void RegisterCallback(RequestCallback callback)
+EXPORT void SetPollingActive(int active)
 {
-    s_csharp_callback = callback;
-    s_callback_valid = (callback != NULL) ? 1 : 0;
+    s_poller_active = active ? 1 : 0;
 
-    /* Clear any pending response state when callback changes */
-    s_has_response = 0;
-    s_response_buffer[0] = '\0';
+    if (!active)
+    {
+        /* Clear response state when deactivating */
+        s_has_response = 0;
+        s_response_buffer[0] = '\0';
+    }
+}
+
+/*
+ * Get the pending request body, if any.
+ */
+EXPORT const char* GetPendingRequest(void)
+{
+    if (s_has_request)
+    {
+        return s_request_buffer;
+    }
+    return NULL;
 }
 
 /*
@@ -483,15 +503,15 @@ EXPORT int IsServerRunning(void)
 }
 
 /*
- * Check if a C# callback is currently registered.
+ * Check if C# polling is currently active.
  */
-EXPORT int IsCallbackValid(void)
+EXPORT int IsPollerActive(void)
 {
-    return s_callback_valid;
+    return s_poller_active;
 }
 
 /*
- * Get the process ID of this native library instance.
+ * Get the process ID of this library instance.
  */
 EXPORT unsigned long GetNativeProcessId(void)
 {
@@ -501,7 +521,7 @@ EXPORT unsigned long GetNativeProcessId(void)
 /*
  * DLL/shared library unload cleanup.
  *
- * When Unity reloads the native plugin (e.g. package update), the old DLL is
+ * When Unity reloads the plugin (e.g. package update), the old DLL is
  * unloaded while its server thread may still be running. Without cleanup, the
  * listen socket leaks and the new DLL can never bind to the same port.
  *

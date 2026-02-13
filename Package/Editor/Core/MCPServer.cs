@@ -1,63 +1,25 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Net;
-using System.Text;
-using System.Threading;
-using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
-using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Core
 {
     /// <summary>
-    /// Handles automatic restart of MCP server after domain reload.
-    /// </summary>
-    [InitializeOnLoad]
-    internal static class MCPServerDomainReload
-    {
-        private const string SessionStateKey = "UnityMCP_ServerShouldRun";
-        private const string SessionStatePortKey = "UnityMCP_ServerPort";
-
-        static MCPServerDomainReload()
-        {
-            // Check if server should be running after domain reload
-            if (SessionState.GetBool(SessionStateKey, false))
-            {
-                int port = SessionState.GetInt(SessionStatePortKey, 8080);
-                MainThreadDispatcher.Enqueue(() =>
-                {
-                    MCPServer.Instance.Port = port;
-                    MCPServer.Instance.Start();
-                });
-            }
-        }
-
-        public static void SetShouldRun(bool shouldRun, int port)
-        {
-            SessionState.SetBool(SessionStateKey, shouldRun);
-            SessionState.SetInt(SessionStatePortKey, port);
-        }
-    }
-
-    /// <summary>
-    /// HTTP server that handles MCP (Model Context Protocol) JSON-RPC requests.
+    /// Handles MCP (Model Context Protocol) JSON-RPC requests.
     /// Provides tool discovery and invocation for AI assistants.
+    /// HTTP transport is handled by the native proxy; this class only handles request routing and response building.
     /// </summary>
     public class MCPServer
     {
         private static MCPServer _instance;
         private static readonly object InstanceLock = new object();
 
-        private HttpListener _listener;
-        private CancellationTokenSource _cancellationTokenSource;
         private int _port = 8080;
         private const string ServerName = "UnityMCP";
-        private const string ServerVersion = "1.3.2";
+        private const string ServerVersion = "1.4.0";
         private const int MainThreadTimeoutSeconds = 30;
 
         /// <summary>
@@ -82,266 +44,12 @@ namespace UnityMCP.Editor.Core
         }
 
         /// <summary>
-        /// Gets whether the server is currently running.
-        /// </summary>
-        public bool IsRunning => _listener?.IsListening ?? false;
-
-        /// <summary>
         /// Gets or sets the port the server listens on.
-        /// Can only be changed when the server is not running.
         /// </summary>
         public int Port
         {
             get => _port;
-            set
-            {
-                if (IsRunning)
-                {
-                    Debug.LogWarning("[MCPServer] Cannot change port while server is running. Stop the server first.");
-                    return;
-                }
-                _port = value;
-            }
-        }
-
-        /// <summary>
-        /// Starts the HTTP server.
-        /// </summary>
-        public void Start()
-        {
-            if (IsRunning)
-            {
-                Debug.LogWarning("[MCPServer] Server is already running.");
-                return;
-            }
-
-            // If native proxy is handling HTTP, don't start managed server
-            if (NativeProxy.IsInitialized)
-            {
-                if (NativeProxy.VerboseLogging) Debug.Log("[MCPServer] Native proxy is active, skipping managed HTTP server.");
-                MCPServerDomainReload.SetShouldRun(true, _port);
-                return;
-            }
-
-            try
-            {
-                _listener = new HttpListener();
-                _listener.Prefixes.Add($"http://localhost:{_port}/");
-                _listener.Start();
-
-                _cancellationTokenSource = new CancellationTokenSource();
-
-                // Persist state for domain reload
-                MCPServerDomainReload.SetShouldRun(true, _port);
-
-                // Enable running in background so server responds when Unity is not focused
-                Application.runInBackground = true;
-
-                if (NativeProxy.VerboseLogging) Debug.Log($"[MCPServer] Started on http://localhost:{_port}/");
-
-                ListenAsync(_cancellationTokenSource.Token);
-            }
-            catch (Exception exception)
-            {
-                Debug.LogError($"[MCPServer] Failed to start: {exception.Message}");
-                Stop();
-            }
-        }
-
-        /// <summary>
-        /// Stops the HTTP server.
-        /// </summary>
-        /// <param name="clearPersistence">If true, clears the persisted state so server won't restart after domain reload.</param>
-        public void Stop(bool clearPersistence = true)
-        {
-            _cancellationTokenSource?.Cancel();
-            _cancellationTokenSource?.Dispose();
-            _cancellationTokenSource = null;
-
-            if (_listener != null)
-            {
-                try
-                {
-                    _listener.Stop();
-                    _listener.Close();
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogWarning($"[MCPServer] Error during shutdown: {exception.Message}");
-                }
-                finally
-                {
-                    _listener = null;
-                }
-            }
-
-            // Clear persistence so server won't auto-restart after domain reload
-            if (clearPersistence)
-            {
-                MCPServerDomainReload.SetShouldRun(false, _port);
-            }
-
-            if (NativeProxy.VerboseLogging) Debug.Log("[MCPServer] Stopped.");
-        }
-
-        private async void ListenAsync(CancellationToken cancellationToken)
-        {
-            while (!cancellationToken.IsCancellationRequested && _listener != null && _listener.IsListening)
-            {
-                try
-                {
-                    var context = await _listener.GetContextAsync().ConfigureAwait(false);
-
-                    // Handle request without awaiting to allow concurrent requests
-                    _ = HandleRequestAsync(context);
-                }
-                catch (ObjectDisposedException)
-                {
-                    // Listener was disposed, exit gracefully
-                    break;
-                }
-                catch (HttpListenerException listenerException)
-                {
-                    // Listener was stopped, exit gracefully
-                    if (listenerException.ErrorCode == UnityConstants.HttpOperationAborted)
-                    {
-                        break;
-                    }
-                    Debug.LogWarning($"[MCPServer] Listener error: {listenerException.Message}");
-                }
-                catch (Exception exception)
-                {
-                    if (!cancellationToken.IsCancellationRequested)
-                    {
-                        Debug.LogWarning($"[MCPServer] Error accepting connection: {exception.Message}");
-                    }
-                }
-            }
-        }
-
-        private async Task HandleRequestAsync(HttpListenerContext context)
-        {
-            try
-            {
-                // Add CORS headers for browser-based clients
-                AddCorsHeaders(context.Response);
-
-                // Handle CORS preflight
-                if (context.Request.HttpMethod == "OPTIONS")
-                {
-                    context.Response.StatusCode = 204;
-                    context.Response.Close();
-                    return;
-                }
-
-                // Only accept POST requests for JSON-RPC
-                if (context.Request.HttpMethod != "POST")
-                {
-                    await WriteErrorResponse(context, 405, "Method Not Allowed");
-                    return;
-                }
-
-                // Read and parse the request
-                JObject requestObject;
-                string requestId = null;
-
-                try
-                {
-                    string requestBody = await ReadRequestBody(context.Request);
-                    requestObject = JObject.Parse(requestBody);
-                    requestId = requestObject["id"]?.ToString();
-                }
-                catch (JsonException jsonException)
-                {
-                    await WriteJsonRpcResponse(context, CreateErrorResponse(
-                        MCPErrorCodes.ParseError,
-                        $"Parse error: {jsonException.Message}",
-                        null));
-                    return;
-                }
-
-                // Validate JSON-RPC request
-                string method = requestObject["method"]?.ToString();
-                if (string.IsNullOrEmpty(method))
-                {
-                    await WriteJsonRpcResponse(context, CreateErrorResponse(
-                        MCPErrorCodes.InvalidRequest,
-                        "Missing 'method' field",
-                        requestId));
-                    return;
-                }
-
-                JToken paramsToken = requestObject["params"];
-
-                // Route to handler
-                JObject response = method switch
-                {
-                    "initialize" => HandleInitialize(requestId),
-                    "tools/list" => HandleToolsList(requestId),
-                    "tools/call" => await HandleToolsCall(paramsToken, requestId),
-                    "resources/list" => HandleResourcesList(requestId),
-                    "resources/read" => HandleResourcesRead(paramsToken, requestId),
-                    "prompts/list" => HandlePromptsList(requestId),
-                    "prompts/get" => HandlePromptsGet(paramsToken, requestId),
-                    _ => CreateErrorResponse(MCPErrorCodes.MethodNotFound, $"Method not found: {method}", requestId)
-                };
-
-                await WriteJsonRpcResponse(context, response);
-            }
-            catch (Exception exception)
-            {
-                Debug.LogError($"[MCPServer] Error handling request: {exception}");
-
-                try
-                {
-                    await WriteJsonRpcResponse(context, CreateErrorResponse(
-                        MCPErrorCodes.InternalError,
-                        $"Internal error: {exception.Message}",
-                        null));
-                }
-                catch
-                {
-                    // Response already started or connection closed
-                }
-            }
-        }
-
-        private void AddCorsHeaders(HttpListenerResponse response)
-        {
-            response.Headers.Add("Access-Control-Allow-Origin", "*");
-            response.Headers.Add("Access-Control-Allow-Methods", "POST, OPTIONS");
-            response.Headers.Add("Access-Control-Allow-Headers", "Content-Type, Authorization");
-            response.Headers.Add("Access-Control-Max-Age", "86400");
-        }
-
-        private async Task<string> ReadRequestBody(HttpListenerRequest request)
-        {
-            using (var reader = new StreamReader(request.InputStream, request.ContentEncoding))
-            {
-                return await reader.ReadToEndAsync();
-            }
-        }
-
-        private async Task WriteJsonRpcResponse(HttpListenerContext context, JObject responseObject)
-        {
-            string responseJson = responseObject.ToString(Formatting.None);
-            byte[] responseBytes = Encoding.UTF8.GetBytes(responseJson);
-
-            context.Response.ContentType = "application/json";
-            context.Response.ContentLength64 = responseBytes.Length;
-            context.Response.StatusCode = 200;
-
-            await context.Response.OutputStream.WriteAsync(responseBytes, 0, responseBytes.Length);
-            context.Response.Close();
-        }
-
-        private async Task WriteErrorResponse(HttpListenerContext context, int statusCode, string message)
-        {
-            context.Response.StatusCode = statusCode;
-            byte[] responseBytes = Encoding.UTF8.GetBytes(message);
-            context.Response.ContentLength64 = responseBytes.Length;
-            await context.Response.OutputStream.WriteAsync(responseBytes, 0, responseBytes.Length);
-            context.Response.Close();
+            set => _port = value;
         }
 
         #region JSON-RPC Response Builders
@@ -394,9 +102,8 @@ namespace UnityMCP.Editor.Core
         #region Public API for Native Proxy
 
         /// <summary>
-        /// Handles a raw JSON-RPC request. Called from NativeProxy.
-        /// This method is synchronous and can be called from any thread.
-        /// Tool and resource invocations are automatically dispatched to Unity's main thread.
+        /// Handles a raw JSON-RPC request. Called from MCPProxy.
+        /// This method is synchronous and runs on Unity's main thread.
         /// </summary>
         /// <param name="jsonRequest">The raw JSON-RPC request string.</param>
         /// <returns>The JSON-RPC response string.</returns>
@@ -420,7 +127,7 @@ namespace UnityMCP.Editor.Core
                 {
                     "initialize" => HandleInitialize(requestId),
                     "tools/list" => HandleToolsList(requestId),
-                    "tools/call" => HandleToolsCallSync(paramsToken, requestId),
+                    "tools/call" => HandleToolsCall(paramsToken, requestId),
                     "resources/list" => HandleResourcesList(requestId),
                     "resources/read" => HandleResourcesRead(paramsToken, requestId),
                     "prompts/list" => HandlePromptsList(requestId),
@@ -587,86 +294,7 @@ namespace UnityMCP.Editor.Core
             return schemaObject;
         }
 
-        private async Task<JObject> HandleToolsCall(JToken paramsToken, string requestId)
-        {
-            if (paramsToken == null)
-            {
-                return CreateErrorResponse(MCPErrorCodes.InvalidParams, "Missing params", requestId);
-            }
-
-            string toolName = paramsToken["name"]?.ToString();
-            if (string.IsNullOrEmpty(toolName))
-            {
-                return CreateErrorResponse(MCPErrorCodes.InvalidParams, "Missing 'name' in params", requestId);
-            }
-
-            if (!ToolRegistry.HasTool(toolName))
-            {
-                return CreateErrorResponse(MCPErrorCodes.MethodNotFound, $"Unknown tool: {toolName}", requestId);
-            }
-
-            JObject argumentsObject = paramsToken["arguments"] as JObject ?? new JObject();
-
-            try
-            {
-                object result = await InvokeToolOnMainThreadAsync(toolName, argumentsObject);
-
-                var contentArray = new JArray();
-                contentArray.Add(new JObject
-                {
-                    ["type"] = "text",
-                    ["text"] = SerializeToolResult(result)
-                });
-
-                var toolResult = new JObject
-                {
-                    ["content"] = contentArray,
-                    ["isError"] = false
-                };
-
-                return CreateSuccessResponse(toolResult, requestId);
-            }
-            catch (MCPException mcpException)
-            {
-                var contentArray = new JArray();
-                contentArray.Add(new JObject
-                {
-                    ["type"] = "text",
-                    ["text"] = mcpException.Message
-                });
-
-                var toolResult = new JObject
-                {
-                    ["content"] = contentArray,
-                    ["isError"] = true
-                };
-
-                return CreateSuccessResponse(toolResult, requestId);
-            }
-            catch (Exception exception)
-            {
-                var contentArray = new JArray();
-                contentArray.Add(new JObject
-                {
-                    ["type"] = "text",
-                    ["text"] = $"Tool execution failed: {exception.Message}"
-                });
-
-                var toolResult = new JObject
-                {
-                    ["content"] = contentArray,
-                    ["isError"] = true
-                };
-
-                return CreateSuccessResponse(toolResult, requestId);
-            }
-        }
-
-        /// <summary>
-        /// Synchronous version of HandleToolsCall for use with NativeProxy.
-        /// This method blocks until the tool execution completes on the main thread.
-        /// </summary>
-        private JObject HandleToolsCallSync(JToken paramsToken, string requestId)
+        private JObject HandleToolsCall(JToken paramsToken, string requestId)
         {
             if (paramsToken == null)
             {
@@ -767,77 +395,14 @@ namespace UnityMCP.Editor.Core
             return JsonConvert.SerializeObject(result, Formatting.Indented);
         }
 
-        private Task<object> InvokeToolOnMainThreadAsync(string toolName, JObject arguments)
-        {
-            var taskCompletionSource = new TaskCompletionSource<object>();
-
-            object result = null;
-            Exception error = null;
-            var completedEvent = new ManualResetEventSlim(false);
-
-            // Schedule on Unity main thread using dispatcher that works even when Unity is not in focus
-            MainThreadDispatcher.Enqueue(() =>
-            {
-                try
-                {
-                    var argumentsDictionary = ConvertJObjectToDictionary(arguments);
-                    result = ToolRegistry.Invoke(toolName, argumentsDictionary);
-                }
-                catch (Exception exception)
-                {
-                    error = exception;
-                }
-                finally
-                {
-                    completedEvent.Set();
-                }
-            });
-
-            // Wait for completion on a background thread
-            Task.Run(() =>
-            {
-                try
-                {
-                    int timeoutMilliseconds = MainThreadTimeoutSeconds * 1000;
-                    if (!completedEvent.Wait(timeoutMilliseconds))
-                    {
-                        taskCompletionSource.TrySetException(
-                            new TimeoutException($"Tool invocation timed out after {MainThreadTimeoutSeconds} seconds"));
-                        return;
-                    }
-
-                    if (error != null)
-                    {
-                        taskCompletionSource.TrySetException(error);
-                    }
-                    else
-                    {
-                        taskCompletionSource.TrySetResult(result);
-                    }
-                }
-                finally
-                {
-                    completedEvent.Dispose();
-                }
-            });
-
-            return taskCompletionSource.Task;
-        }
-
         /// <summary>
-        /// Synchronous version of InvokeToolOnMainThreadAsync for use with NativeProxy.
-        /// This method blocks the calling thread until the tool execution completes on Unity's main thread.
-        /// Uses DispatchAndWait for thread-safe main thread dispatch.
+        /// Invokes a tool on Unity's main thread.
+        /// Since PollForRequests already runs on the main thread, this executes directly.
         /// </summary>
         private object InvokeToolOnMainThread(string toolName, JObject arguments)
         {
-            int timeoutMilliseconds = MainThreadTimeoutSeconds * 1000;
-
-            return MainThreadDispatcher.DispatchAndWait(() =>
-            {
-                var argumentsDictionary = ConvertJObjectToDictionary(arguments);
-                return ToolRegistry.Invoke(toolName, argumentsDictionary);
-            }, timeoutMilliseconds);
+            var argumentsDictionary = ConvertJObjectToDictionary(arguments);
+            return ToolRegistry.Invoke(toolName, argumentsDictionary);
         }
 
         private Dictionary<string, object> ConvertJObjectToDictionary(JObject jObject)
@@ -947,14 +512,13 @@ namespace UnityMCP.Editor.Core
             }
         }
 
+        /// <summary>
+        /// Invokes a resource on Unity's main thread.
+        /// Since PollForRequests already runs on the main thread, this executes directly.
+        /// </summary>
         private ResourceContent InvokeResourceOnMainThread(string resourceUri)
         {
-            int timeoutMilliseconds = MainThreadTimeoutSeconds * 1000;
-
-            return MainThreadDispatcher.DispatchAndWait(() =>
-            {
-                return ResourceRegistry.Invoke(resourceUri);
-            }, timeoutMilliseconds);
+            return ResourceRegistry.Invoke(resourceUri);
         }
 
         private JObject HandlePromptsList(string requestId)
@@ -1073,14 +637,13 @@ namespace UnityMCP.Editor.Core
             }
         }
 
+        /// <summary>
+        /// Invokes a prompt on Unity's main thread.
+        /// Since PollForRequests already runs on the main thread, this executes directly.
+        /// </summary>
         private PromptResult InvokePromptOnMainThread(string promptName, Dictionary<string, string> arguments)
         {
-            int timeoutMilliseconds = MainThreadTimeoutSeconds * 1000;
-
-            return MainThreadDispatcher.DispatchAndWait(() =>
-            {
-                return PromptRegistry.Invoke(promptName, arguments);
-            }, timeoutMilliseconds);
+            return PromptRegistry.Invoke(promptName, arguments);
         }
 
         #endregion
