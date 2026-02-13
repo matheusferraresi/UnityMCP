@@ -2,7 +2,6 @@
     "name": "UnityMCP.Editor",
     "rootNamespace": "UnityMCP.Editor",
     "references": [
-        "UnityMCP.Runtime",
         "UnityEditor.TestRunner",
         "UnityEngine.TestRunner",
         "Unity.InputSystem"
