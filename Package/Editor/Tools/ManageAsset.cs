@@ -53,7 +53,7 @@ namespace UnityMCP.Editor.Tools
                     "rename" => HandleRename(path, destination),
                     "duplicate" => HandleDuplicate(path, destination),
                     "import" => HandleImport(path),
-                    "search" => HandleSearch(searchPattern, filterType, pageSize, pageNumber),
+                    "search" => HandleSearch(searchPattern, filterType, path, pageSize, pageNumber),
                     "get_info" => HandleGetInfo(path),
                     _ => throw MCPException.InvalidParams($"Unknown action: '{action}'. Valid actions: create, delete, move, rename, duplicate, import, search, get_info, create_folder")
                 };
@@ -227,6 +227,9 @@ namespace UnityMCP.Editor.Tools
             string normalizedPath = PathUtilities.NormalizePath(path);
             string normalizedDestination = PathUtilities.NormalizePath(destination);
 
+            // Ensure AssetDatabase is up-to-date before checking existence
+            AssetDatabase.Refresh();
+
             if (!AssetExists(normalizedPath))
             {
                 return new
@@ -303,6 +306,9 @@ namespace UnityMCP.Editor.Tools
             }
 
             string normalizedPath = PathUtilities.NormalizePath(path);
+
+            // Ensure AssetDatabase is up-to-date before checking existence
+            AssetDatabase.Refresh();
 
             if (!AssetExists(normalizedPath))
             {
@@ -422,6 +428,10 @@ namespace UnityMCP.Editor.Tools
 
                 if (copied)
                 {
+                    // Persist the duplicated asset to disk and refresh the database
+                    AssetDatabase.SaveAssets();
+                    AssetDatabase.Refresh();
+
                     return new
                     {
                         success = true,
@@ -496,7 +506,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Handles the search action - searches for assets.
         /// </summary>
-        private static object HandleSearch(string searchPattern, string filterType, int pageSize, int pageNumber)
+        private static object HandleSearch(string searchPattern, string filterType, string searchPath, int pageSize, int pageNumber)
         {
             // Build the search filter
             string filter = string.Empty;
@@ -513,15 +523,28 @@ namespace UnityMCP.Editor.Tools
                     : $"{filter} {searchPattern}";
             }
 
+            // Normalize the search path for folder-scoped search
+            string[] searchFolders = null;
+            if (!string.IsNullOrEmpty(searchPath))
+            {
+                string normalizedSearchPath = PathUtilities.NormalizePath(searchPath);
+                if (AssetDatabase.IsValidFolder(normalizedSearchPath))
+                {
+                    searchFolders = new[] { normalizedSearchPath };
+                }
+            }
+
             // Clamp pagination values
             int resolvedPageSize = Mathf.Clamp(pageSize, 1, MaxPageSize);
             int resolvedPageNumber = Mathf.Max(1, pageNumber);
 
             try
             {
-                string[] guids = string.IsNullOrEmpty(filter)
-                    ? AssetDatabase.FindAssets("")
-                    : AssetDatabase.FindAssets(filter);
+                string[] guids = searchFolders != null
+                    ? AssetDatabase.FindAssets(filter ?? "", searchFolders)
+                    : string.IsNullOrEmpty(filter)
+                        ? AssetDatabase.FindAssets("")
+                        : AssetDatabase.FindAssets(filter);
 
                 int totalCount = guids.Length;
                 int startIndex = (resolvedPageNumber - 1) * resolvedPageSize;
