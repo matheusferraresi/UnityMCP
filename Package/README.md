@@ -20,8 +20,8 @@ Model Context Protocol (MCP) server that enables AI assistants like Claude, Code
 
 ## Installation
 
-1. Open Unity Package Manager (Window > Package Manager)
-2. Click `+` > "Add package from git URL"
+1. Open Unity Package Manager (Window → Package Manager)
+2. Click `+` → "Add package from git URL"
 3. Enter the URL of whichever version you want
 
 ### Latest Version (Recommended)
