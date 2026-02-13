@@ -19,7 +19,7 @@ namespace UnityMCP.Editor.Core
 
         private int _port = 8080;
         private const string ServerName = "UnityMCP";
-        internal const string ServerVersion = "1.4.1";
+        internal const string ServerVersion = "1.5.0";
         private const int MainThreadTimeoutSeconds = 30;
 
         /// <summary>
