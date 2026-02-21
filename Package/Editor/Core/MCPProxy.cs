@@ -67,6 +67,14 @@ namespace UnityMCP.Editor.Core
         private static bool s_initialized = false;
 
         /// <summary>
+        /// Re-entrancy guard for PollForRequests. The native proxy keeps s_has_request=1
+        /// until AFTER C# calls SendResponse, so re-entrant EditorApplication.update calls
+        /// (e.g., from Camera.Render or AssetDatabase operations during tool execution)
+        /// would re-process the same request, creating duplicate side effects.
+        /// </summary>
+        private static bool s_isProcessingRequest = false;
+
+        /// <summary>
         /// Gets whether the MCP proxy is currently active.
         /// </summary>
         public static bool IsInitialized => s_initialized;
@@ -303,43 +311,58 @@ namespace UnityMCP.Editor.Core
         /// </summary>
         private static void PollForRequests()
         {
+            // Re-entrancy guard: the native proxy keeps s_has_request=1 until AFTER
+            // SendResponse() is called and the HTTP handler clears the flag. If tool
+            // execution pumps EditorApplication.update (e.g., Camera.Render, AssetDatabase
+            // operations), a re-entrant call would see the same request and process it
+            // again, causing duplicate side effects (e.g., duplicate screenshot files).
+            if (s_isProcessingRequest) return;
+
             IntPtr ptr = GetPendingRequest();
             if (ptr == IntPtr.Zero)
             {
                 return;
             }
 
-            string jsonRequest = Marshal.PtrToStringAnsi(ptr);
-            string requestId = ExtractRequestId(jsonRequest);
-            string toolName = ExtractToolName(jsonRequest);
-
+            s_isProcessingRequest = true;
             try
             {
-                string response = MCPServer.Instance.HandleRequest(jsonRequest);
+                string jsonRequest = Marshal.PtrToStringAnsi(ptr);
+                string requestId = ExtractRequestId(jsonRequest);
+                string toolName = ExtractToolName(jsonRequest);
 
-                if (response != null && response.Length >= MaxResponseSize)
+                try
                 {
-                    Debug.LogWarning($"[MCPProxy] Response size ({response.Length} bytes) exceeds maximum ({MaxResponseSize} bytes). Returning error response.");
-                    string errorResponse = BuildErrorResponse(
-                        -32603,
-                        $"Response too large ({response.Length} bytes). Maximum supported size is {MaxResponseSize - 1} bytes. Try reducing max_depth or using more specific queries.",
-                        requestId);
+                    string response = MCPServer.Instance.HandleRequest(jsonRequest);
+
+                    if (response != null && response.Length >= MaxResponseSize)
+                    {
+                        Debug.LogWarning($"[MCPProxy] Response size ({response.Length} bytes) exceeds maximum ({MaxResponseSize} bytes). Returning error response.");
+                        string errorResponse = BuildErrorResponse(
+                            -32603,
+                            $"Response too large ({response.Length} bytes). Maximum supported size is {MaxResponseSize - 1} bytes. Try reducing max_depth or using more specific queries.",
+                            requestId);
+                        SendResponse(errorResponse);
+                        if (toolName != null)
+                            ActivityLog.Record(toolName, false, "Response too large");
+                        return;
+                    }
+
+                    SendResponse(response);
+                    if (toolName != null)
+                        ActivityLog.Record(toolName, true);
+                }
+                catch (Exception exception)
+                {
+                    string errorResponse = BuildErrorResponse(-32603, exception.Message, requestId);
                     SendResponse(errorResponse);
                     if (toolName != null)
-                        ActivityLog.Record(toolName, false, "Response too large");
-                    return;
+                        ActivityLog.Record(toolName, false, exception.Message);
                 }
-
-                SendResponse(response);
-                if (toolName != null)
-                    ActivityLog.Record(toolName, true);
             }
-            catch (Exception exception)
+            finally
             {
-                string errorResponse = BuildErrorResponse(-32603, exception.Message, requestId);
-                SendResponse(errorResponse);
-                if (toolName != null)
-                    ActivityLog.Record(toolName, false, exception.Message);
+                s_isProcessingRequest = false;
             }
         }
 

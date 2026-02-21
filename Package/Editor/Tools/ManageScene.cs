@@ -673,12 +673,13 @@ namespace UnityMCP.Editor.Tools
             }
             else
             {
-                // In edit mode, we need to wait a bit for the file to be written
+                // In edit mode, wait for the file to be written then import.
+                // Do NOT use ForceSynchronousImport -- see CaptureSceneViewScreenshot comment.
                 EditorApplication.delayCall += () =>
                 {
                     if (File.Exists(fullPath))
                     {
-                        AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceSynchronousImport);
+                        AssetDatabase.ImportAsset(relativePath);
                     }
                 };
             }
@@ -757,12 +758,15 @@ namespace UnityMCP.Editor.Tools
                 // Clean up the temporary texture
                 UnityEngine.Object.DestroyImmediate(screenshotTexture);
 
-                // Import the asset
+                // Import the asset so it appears in the Asset Database.
+                // IMPORTANT: Do NOT use ForceSynchronousImport here. It processes the entire import
+                // pipeline synchronously, which can pump EditorApplication.update and cause re-entrant
+                // PollForRequests dispatch -- leading to duplicate screenshot files with parallel captures.
                 EditorApplication.delayCall += () =>
                 {
                     if (File.Exists(fullPath))
                     {
-                        AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceSynchronousImport);
+                        AssetDatabase.ImportAsset(relativePath);
                     }
                 };
 
