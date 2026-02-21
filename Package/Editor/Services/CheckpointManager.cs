@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEditor.SceneManagement;
@@ -99,12 +100,22 @@ namespace UnityMCP.Editor.Services
 
             if (trackedAssetsA.Count > 0)
             {
-                result["tracked_assets_a"] = trackedAssetsA;
+                const int maxAssets = 30;
+                result["tracked_assets_a"] = trackedAssetsA.Count <= maxAssets
+                    ? trackedAssetsA
+                    : trackedAssetsA.Take(maxAssets).ToList();
+                if (trackedAssetsA.Count > maxAssets)
+                    result["tracked_assets_a_total"] = trackedAssetsA.Count;
             }
 
             if (trackedAssetsB.Count > 0)
             {
-                result["tracked_assets_b"] = trackedAssetsB;
+                const int maxAssets = 30;
+                result["tracked_assets_b"] = trackedAssetsB.Count <= maxAssets
+                    ? trackedAssetsB
+                    : trackedAssetsB.Take(maxAssets).ToList();
+                if (trackedAssetsB.Count > maxAssets)
+                    result["tracked_assets_b_total"] = trackedAssetsB.Count;
             }
 
             return result;
@@ -131,11 +142,6 @@ namespace UnityMCP.Editor.Services
         /// </summary>
         private static readonly TimeSpan MaxBucketAge = TimeSpan.FromHours(24);
 
-        /// <summary>
-        /// Asset file extensions to scan for dirty assets as a belt-and-suspenders check.
-        /// </summary>
-        private static readonly string[] TrackedAssetExtensions = { ".prefab", ".asset", ".mat" };
-
         private static readonly object _lock = new object();
 
         #endregion
@@ -150,7 +156,8 @@ namespace UnityMCP.Editor.Services
 
         /// <summary>
         /// Registers a Unity object's asset path for inclusion in the next checkpoint.
-        /// Thread-safe; can be called from any thread.
+        /// Must be called from the main thread (uses AssetDatabase.GetAssetPath).
+        /// For off-main-thread callers, use the <see cref="Track(string)"/> overload instead.
         /// </summary>
         /// <param name="obj">A Unity object that has an asset path (e.g., material, prefab).</param>
         public static void Track(UnityEngine.Object obj)
@@ -194,6 +201,7 @@ namespace UnityMCP.Editor.Services
         /// </summary>
         private static HashSet<string> ConsumePendingTracks()
         {
+            Debug.Assert(Monitor.IsEntered(_lock), "ConsumePendingTracks must be called with _lock held");
             var consumed = new HashSet<string>(_pendingTrackedPaths);
             _pendingTrackedPaths.Clear();
             return consumed;
@@ -253,22 +261,21 @@ namespace UnityMCP.Editor.Services
                 // Step 1: Consume pending tracks
                 HashSet<string> consumedTracks = ConsumePendingTracks();
 
-                // Step 2: Belt-and-suspenders - find dirty assets with tracked extensions
-                HashSet<string> dirtyAssetPaths = FindDirtyTrackedAssets();
-                consumedTracks.UnionWith(dirtyAssetPaths);
-
-                // Step 3: Remove the active scene path from tracked assets (scene is always handled separately)
+                // Step 2: Remove the active scene path from tracked assets (scene is always handled separately)
                 consumedTracks.Remove(activeScene.path);
 
-                // Step 4: Check if there is anything to save
+                // Step 3: Check if there is anything to save
                 bool sceneIsDirty = activeScene.isDirty;
                 if (consumedTracks.Count == 0 && !sceneIsDirty)
                 {
                     return null;
                 }
 
-                // Save current scene state to disk before copying
-                EditorSceneManager.SaveScene(activeScene);
+                // Save current scene state to disk before copying (only if scene has unsaved changes)
+                if (sceneIsDirty)
+                {
+                    EditorSceneManager.SaveScene(activeScene);
+                }
 
                 string projectRoot = Path.GetDirectoryName(Application.dataPath);
                 string fullScenePath = Path.Combine(projectRoot, activeScene.path);
@@ -278,12 +285,12 @@ namespace UnityMCP.Editor.Services
 
                 if (!newBucket && activeBucket != null)
                 {
-                    // Step 5: Merge into existing active bucket
+                    // Step 4: Merge into existing active bucket
                     return MergeIntoActiveBucket(activeBucket, activeScene, fullScenePath, consumedTracks);
                 }
                 else
                 {
-                    // Step 6: Freeze old active bucket and create a new one
+                    // Step 5: Freeze old active bucket and create a new one
                     if (activeBucket != null)
                     {
                         FreezeBucket(activeBucket);
@@ -293,7 +300,7 @@ namespace UnityMCP.Editor.Services
 
                     if (newMetadata != null)
                     {
-                        // Step 7: Enforce retention limits
+                        // Step 6: Enforce retention limits
                         EnforceRetentionLimits();
                     }
 
@@ -485,15 +492,7 @@ namespace UnityMCP.Editor.Services
         {
             lock (_lock)
             {
-                string checkpointScenePath = Path.Combine(CheckpointDirectory, $"{checkpointId}.unity");
-                string checkpointMetadataPath = Path.Combine(CheckpointDirectory, $"{checkpointId}.json");
-                string assetSnapshotDirectory = Path.Combine(CheckpointDirectory, $"{checkpointId}_assets");
-
-                bool sceneDeleted = TryDeleteFile(checkpointScenePath);
-                bool metadataDeleted = TryDeleteFile(checkpointMetadataPath);
-                bool assetsDeleted = TryDeleteDirectory(assetSnapshotDirectory);
-
-                return sceneDeleted || metadataDeleted || assetsDeleted;
+                return DeleteCheckpointFiles(checkpointId);
             }
         }
 
@@ -579,7 +578,7 @@ namespace UnityMCP.Editor.Services
             activeBucket.totalObjectCount = totalObjectCount;
 
             // Update timestamp
-            activeBucket.timestamp = DateTime.UtcNow;
+            activeBucket.timestamp = DateTime.Now;
 
             // Write updated metadata
             WriteMetadata(activeBucket);
@@ -636,7 +635,7 @@ namespace UnityMCP.Editor.Services
             {
                 id = checkpointId,
                 name = checkpointName ?? $"Checkpoint {DateTime.Now:HH:mm:ss}",
-                timestamp = DateTime.UtcNow,
+                timestamp = DateTime.Now,
                 sceneName = activeScene.name,
                 scenePath = activeScene.path,
                 rootObjectCount = rootObjects.Length,
@@ -769,52 +768,6 @@ namespace UnityMCP.Editor.Services
 
         #endregion
 
-        #region Dirty Asset Detection
-
-        /// <summary>
-        /// Finds dirty assets in the Assets/ folder with tracked extensions (.prefab, .asset, .mat).
-        /// Uses AssetDatabase.FindAssets to locate candidates, then checks EditorUtility.IsDirty.
-        /// </summary>
-        private static HashSet<string> FindDirtyTrackedAssets()
-        {
-            var dirtyPaths = new HashSet<string>();
-
-            foreach (string extension in TrackedAssetExtensions)
-            {
-                // Build search filter based on extension type
-                string typeFilter = extension switch
-                {
-                    ".prefab" => "t:Prefab",
-                    ".asset" => "t:ScriptableObject",
-                    ".mat" => "t:Material",
-                    _ => null
-                };
-
-                if (typeFilter == null) continue;
-
-                string[] guids = AssetDatabase.FindAssets(typeFilter, new[] { "Assets" });
-                foreach (string guid in guids)
-                {
-                    string assetPath = AssetDatabase.GUIDToAssetPath(guid);
-                    if (string.IsNullOrEmpty(assetPath)) continue;
-
-                    // Verify the extension matches (FindAssets type filter may return related types)
-                    if (!assetPath.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) continue;
-
-                    // Check if the asset is dirty without forcing a full load
-                    UnityEngine.Object loadedAsset = AssetDatabase.LoadMainAssetAtPath(assetPath);
-                    if (loadedAsset != null && EditorUtility.IsDirty(loadedAsset))
-                    {
-                        dirtyPaths.Add(assetPath);
-                    }
-                }
-            }
-
-            return dirtyPaths;
-        }
-
-        #endregion
-
         #region Private Methods
 
         /// <summary>
@@ -920,13 +873,13 @@ namespace UnityMCP.Editor.Services
         private static void EnforceRetentionLimits()
         {
             List<CheckpointMetadata> checkpoints = ListCheckpointsInternal();
-            DateTime utcNow = DateTime.UtcNow;
+            DateTime now = DateTime.Now;
 
             // Age-based: delete frozen buckets older than MaxBucketAge
             for (int i = checkpoints.Count - 1; i >= 0; i--)
             {
                 CheckpointMetadata checkpoint = checkpoints[i];
-                if (checkpoint.isFrozen && (utcNow - checkpoint.timestamp) > MaxBucketAge)
+                if (checkpoint.isFrozen && (now - checkpoint.timestamp) > MaxBucketAge)
                 {
                     DeleteCheckpointFiles(checkpoint.id);
                     checkpoints.RemoveAt(i);
@@ -1005,17 +958,21 @@ namespace UnityMCP.Editor.Services
         }
 
         /// <summary>
-        /// Deletes checkpoint files and asset snapshot directory without acquiring the lock (caller must hold it).
+        /// Deletes checkpoint files and asset snapshot directory without acquiring the lock.
+        /// Caller must hold _lock.
         /// </summary>
-        private static void DeleteCheckpointFiles(string checkpointId)
+        /// <returns>True if any files were deleted, false if nothing was found to delete.</returns>
+        private static bool DeleteCheckpointFiles(string checkpointId)
         {
             string checkpointScenePath = Path.Combine(CheckpointDirectory, $"{checkpointId}.unity");
             string checkpointMetadataPath = Path.Combine(CheckpointDirectory, $"{checkpointId}.json");
             string assetSnapshotDirectory = Path.Combine(CheckpointDirectory, $"{checkpointId}_assets");
 
-            TryDeleteFile(checkpointScenePath);
-            TryDeleteFile(checkpointMetadataPath);
-            TryDeleteDirectory(assetSnapshotDirectory);
+            bool sceneDeleted = TryDeleteFile(checkpointScenePath);
+            bool metadataDeleted = TryDeleteFile(checkpointMetadataPath);
+            bool assetsDeleted = TryDeleteDirectory(assetSnapshotDirectory);
+
+            return sceneDeleted || metadataDeleted || assetsDeleted;
         }
 
         /// <summary>
