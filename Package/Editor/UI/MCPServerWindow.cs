@@ -70,8 +70,7 @@ namespace UnityMCP.Editor.UI
                 new StatusTab(),
                 new ActivityTab(),
                 new ToolsTab(),
-                new CheckpointsTab(),
-                new RecipesTab()
+                new CheckpointsTab()
             };
 
             foreach (ITab tab in _tabs)
@@ -225,7 +224,7 @@ namespace UnityMCP.Editor.UI
             VisualElement tabBar = new VisualElement();
             tabBar.AddToClassList("tab-bar");
 
-            string[] tabNames = { "Status", "Activity", "Registry", "Checkpoints", "Recipes" };
+            string[] tabNames = { "Status", "Activity", "Registry", "Checkpoints" };
 
             for (int i = 0; i < tabNames.Length; i++)
             {

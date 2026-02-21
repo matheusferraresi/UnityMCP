@@ -388,6 +388,41 @@
     text-overflow: ellipsis;
 }
 
+/* --- Registry Inner Tab Bar --- */
+.reg-tab-bar {
+    flex-direction: row;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--umcp-border);
+    margin-bottom: 6px;
+}
+
+.reg-tab {
+    padding: 4px 10px;
+    font-size: 10px;
+    color: var(--umcp-muted);
+    background-color: rgba(0, 0, 0, 0);
+    border-width: 0;
+    border-bottom-width: 2px;
+    border-bottom-color: rgba(0, 0, 0, 0);
+    border-radius: 0;
+    margin: 0;
+    cursor: link;
+    flex-grow: 1;
+    flex-basis: 0;
+    -unity-text-align: middle-center;
+}
+
+.reg-tab:hover {
+    color: rgba(255, 255, 255, 0.8);
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.reg-tab--active {
+    color: var(--umcp-accent);
+    border-bottom-color: var(--umcp-accent);
+    -unity-font-style: bold;
+}
+
 /* --- Registry Section Headers --- */
 .reg-section-header {
     flex-direction: row;
@@ -488,6 +523,14 @@
 
 .reg-card--expanded.reg-card--prompt {
     border-left-color: var(--umcp-warning);
+}
+
+.reg-card--recipe {
+    border-left-color: rgba(155, 89, 182, 0.4);
+}
+
+.reg-card--expanded.reg-card--recipe {
+    border-left-color: #9B59B6;
 }
 
 /* Card header row */

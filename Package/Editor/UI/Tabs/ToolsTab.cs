@@ -7,12 +7,12 @@ using UnityMCP.Editor.Core;
 namespace UnityMCP.Editor.UI.Tabs
 {
     /// <summary>
-    /// Registry tab: browsable catalog of MCP tools, resources, and prompts
-    /// with type filtering, search, and expandable parameter detail.
+    /// Registry tab: browsable catalog of MCP tools, resources, prompts, and recipes
+    /// with inner sub-tabs, category grouping, search, and expandable detail.
     /// </summary>
     public class ToolsTab : ITab
     {
-        private enum TypeFilter { All, Tools, Resources, Prompts }
+        private enum SubTab { Tools, Resources, Prompts, Recipes }
 
         public VisualElement Root { get; }
 
@@ -22,13 +22,13 @@ namespace UnityMCP.Editor.UI.Tabs
         private readonly VisualElement _listContainer;
         private readonly VisualElement _emptyState;
 
-        private readonly Button _filterAll;
-        private readonly Button _filterTools;
-        private readonly Button _filterResources;
-        private readonly Button _filterPrompts;
+        private readonly Button _tabTools;
+        private readonly Button _tabResources;
+        private readonly Button _tabPrompts;
+        private readonly Button _tabRecipes;
 
         private string _searchFilter = "";
-        private TypeFilter _currentTypeFilter = TypeFilter.All;
+        private SubTab _currentSubTab = SubTab.Tools;
         private List<IGrouping<string, ToolDefinition>> _cachedToolsByCategory;
 
         public ToolsTab()
@@ -52,6 +52,23 @@ namespace UnityMCP.Editor.UI.Tabs
 
             Root.Add(summaryBar);
 
+            // Inner sub-tab bar
+            VisualElement subTabBar = new VisualElement();
+            subTabBar.AddToClassList("reg-tab-bar");
+
+            _tabTools = CreateSubTab("Tools", SubTab.Tools);
+            _tabResources = CreateSubTab("Resources", SubTab.Resources);
+            _tabPrompts = CreateSubTab("Prompts", SubTab.Prompts);
+            _tabRecipes = CreateSubTab("Recipes", SubTab.Recipes);
+
+            subTabBar.Add(_tabTools);
+            subTabBar.Add(_tabResources);
+            subTabBar.Add(_tabPrompts);
+            subTabBar.Add(_tabRecipes);
+
+            _tabTools.AddToClassList("reg-tab--active");
+            Root.Add(subTabBar);
+
             // Search field
             _searchField = new TextField();
             _searchField.AddToClassList("search-field");
@@ -65,24 +82,6 @@ namespace UnityMCP.Editor.UI.Tabs
             _searchField.value = "";
             SetPlaceholder(_searchField, "Search by name, description, or parameter...");
 
-            // Type filter bar
-            VisualElement typeBar = new VisualElement();
-            typeBar.AddToClassList("filter-bar");
-            typeBar.style.marginBottom = 6;
-
-            _filterAll = CreateTypePill("All", TypeFilter.All);
-            _filterTools = CreateTypePill("Tools", TypeFilter.Tools);
-            _filterResources = CreateTypePill("Resources", TypeFilter.Resources);
-            _filterPrompts = CreateTypePill("Prompts", TypeFilter.Prompts);
-
-            typeBar.Add(_filterAll);
-            typeBar.Add(_filterTools);
-            typeBar.Add(_filterResources);
-            typeBar.Add(_filterPrompts);
-
-            _filterAll.AddToClassList("filter-pill--active");
-            Root.Add(typeBar);
-
             // Scroll view
             _scrollView = new ScrollView(ScrollViewMode.Vertical);
             _scrollView.AddToClassList("scroll-view");
@@ -93,7 +92,7 @@ namespace UnityMCP.Editor.UI.Tabs
             // Empty state
             _emptyState = new VisualElement();
             _emptyState.AddToClassList("empty-state");
-            Label emptyLabel = new Label("No items registered.\nCreate tools with [MCPTool], resources with [MCPResource], or prompts with [MCPPrompt].");
+            Label emptyLabel = new Label("No items registered.");
             emptyLabel.AddToClassList("empty-state-text");
             _emptyState.Add(emptyLabel);
         }
@@ -121,26 +120,27 @@ namespace UnityMCP.Editor.UI.Tabs
             int toolCount = ToolRegistry.Count;
             int resourceCount = ResourceRegistry.Count;
             int promptCount = PromptRegistry.Count;
-            _summaryLabel.text = $"{toolCount} tools \u00b7 {resourceCount} resources \u00b7 {promptCount} prompts";
+            int recipeCount = RecipeRegistry.Count;
+            _summaryLabel.text = $"{toolCount} tools \u00b7 {resourceCount} resources \u00b7 {promptCount} prompts \u00b7 {recipeCount} recipes";
         }
 
-        #region Type Filter
+        #region Sub-Tab Switching
 
-        private Button CreateTypePill(string label, TypeFilter filter)
+        private Button CreateSubTab(string label, SubTab subTab)
         {
-            Button pill = new Button(() => SetTypeFilter(filter)) { text = label };
-            pill.AddToClassList("filter-pill");
-            return pill;
+            Button button = new Button(() => SwitchSubTab(subTab)) { text = label };
+            button.AddToClassList("reg-tab");
+            return button;
         }
 
-        private void SetTypeFilter(TypeFilter filter)
+        private void SwitchSubTab(SubTab subTab)
         {
-            _currentTypeFilter = filter;
+            _currentSubTab = subTab;
 
-            _filterAll.EnableInClassList("filter-pill--active", filter == TypeFilter.All);
-            _filterTools.EnableInClassList("filter-pill--active", filter == TypeFilter.Tools);
-            _filterResources.EnableInClassList("filter-pill--active", filter == TypeFilter.Resources);
-            _filterPrompts.EnableInClassList("filter-pill--active", filter == TypeFilter.Prompts);
+            _tabTools.EnableInClassList("reg-tab--active", subTab == SubTab.Tools);
+            _tabResources.EnableInClassList("reg-tab--active", subTab == SubTab.Resources);
+            _tabPrompts.EnableInClassList("reg-tab--active", subTab == SubTab.Prompts);
+            _tabRecipes.EnableInClassList("reg-tab--active", subTab == SubTab.Recipes);
 
             RebuildList();
         }
@@ -158,32 +158,29 @@ namespace UnityMCP.Editor.UI.Tabs
             string filterLower = hasFilter ? _searchFilter.ToLowerInvariant() : "";
             bool hasVisibleItems = false;
 
-            // --- Tools ---
-            if (_currentTypeFilter == TypeFilter.All || _currentTypeFilter == TypeFilter.Tools)
+            switch (_currentSubTab)
             {
-                hasVisibleItems |= BuildToolsSection(filterLower, hasFilter);
-            }
-
-            // --- Resources ---
-            if (_currentTypeFilter == TypeFilter.All || _currentTypeFilter == TypeFilter.Resources)
-            {
-                hasVisibleItems |= BuildResourcesSection(filterLower, hasFilter);
-            }
-
-            // --- Prompts ---
-            if (_currentTypeFilter == TypeFilter.All || _currentTypeFilter == TypeFilter.Prompts)
-            {
-                hasVisibleItems |= BuildPromptsSection(filterLower, hasFilter);
+                case SubTab.Tools:
+                    hasVisibleItems = BuildToolsContent(filterLower, hasFilter);
+                    break;
+                case SubTab.Resources:
+                    hasVisibleItems = BuildResourcesContent(filterLower, hasFilter);
+                    break;
+                case SubTab.Prompts:
+                    hasVisibleItems = BuildPromptsContent(filterLower, hasFilter);
+                    break;
+                case SubTab.Recipes:
+                    hasVisibleItems = BuildRecipesContent(filterLower, hasFilter);
+                    break;
             }
 
             if (!hasVisibleItems)
             {
-                if (hasFilter || _currentTypeFilter != TypeFilter.All)
+                if (hasFilter)
                 {
                     VisualElement noResults = new VisualElement();
                     noResults.AddToClassList("empty-state");
-                    string context = hasFilter ? $"\"{_searchFilter}\"" : _currentTypeFilter.ToString().ToLowerInvariant();
-                    Label noResultsLabel = new Label($"No items matching {context}");
+                    Label noResultsLabel = new Label($"No {_currentSubTab.ToString().ToLowerInvariant()} matching \"{_searchFilter}\"");
                     noResultsLabel.AddToClassList("empty-state-text");
                     noResults.Add(noResultsLabel);
                     _listContainer.Add(noResults);
@@ -197,9 +194,9 @@ namespace UnityMCP.Editor.UI.Tabs
 
         #endregion
 
-        #region Tools Section
+        #region Tools Content
 
-        private bool BuildToolsSection(string filterLower, bool hasFilter)
+        private bool BuildToolsContent(string filterLower, bool hasFilter)
         {
             if (_cachedToolsByCategory == null || _cachedToolsByCategory.Count == 0)
                 return false;
@@ -222,50 +219,11 @@ namespace UnityMCP.Editor.UI.Tabs
                 }
 
                 hasVisibleTools = true;
-
-                // Collapsible category group
-                VisualElement categoryGroup = new VisualElement();
-
-                VisualElement sectionHeader = new VisualElement();
-                sectionHeader.AddToClassList("reg-section-header");
-                sectionHeader.AddToClassList("reg-section-header--clickable");
-
-                Label arrowLabel = new Label("\u25B6");
-                arrowLabel.AddToClassList("reg-section-arrow");
-                sectionHeader.Add(arrowLabel);
-
-                Label sectionLabel = new Label($"{group.Key}");
-                sectionLabel.AddToClassList("reg-section-label");
-                sectionHeader.Add(sectionLabel);
-
-                Label sectionCount = new Label($"{tools.Count}");
-                sectionCount.AddToClassList("reg-section-count");
-                sectionHeader.Add(sectionCount);
-
-                categoryGroup.Add(sectionHeader);
-
-                VisualElement cardsContainer = new VisualElement();
-                // Expand when filtering, collapse otherwise
-                bool startExpanded = hasFilter;
-                cardsContainer.style.display = startExpanded ? DisplayStyle.Flex : DisplayStyle.None;
-                arrowLabel.text = startExpanded ? "\u25BC" : "\u25B6";
-
-                foreach (ToolDefinition tool in tools)
+                _listContainer.Add(BuildCollapsibleSection(group.Key, tools.Count, hasFilter, container =>
                 {
-                    cardsContainer.Add(BuildToolCard(tool));
-                }
-
-                categoryGroup.Add(cardsContainer);
-
-                // Click header to toggle
-                sectionHeader.RegisterCallback<ClickEvent>(evt =>
-                {
-                    bool isExpanded = cardsContainer.style.display == DisplayStyle.Flex;
-                    cardsContainer.style.display = isExpanded ? DisplayStyle.None : DisplayStyle.Flex;
-                    arrowLabel.text = isExpanded ? "\u25B6" : "\u25BC";
-                });
-
-                _listContainer.Add(categoryGroup);
+                    foreach (ToolDefinition tool in tools)
+                        container.Add(BuildToolCard(tool));
+                }));
             }
 
             return hasVisibleTools;
@@ -296,7 +254,6 @@ namespace UnityMCP.Editor.UI.Tabs
             nameLabel.AddToClassList("reg-card__name");
             headerRow.Add(nameLabel);
 
-            // Param count pill (inline)
             if (tool.inputSchema?.properties != null && tool.inputSchema.properties.Count > 0)
             {
                 int totalParams = tool.inputSchema.properties.Count;
@@ -305,13 +262,9 @@ namespace UnityMCP.Editor.UI.Tabs
                     ? $"{totalParams} params ({requiredParams} req)"
                     : $"{totalParams} params";
 
-                Label paramPill = new Label(paramText);
-                paramPill.AddToClassList("pill");
-                paramPill.AddToClassList("pill--stat");
-                headerRow.Add(paramPill);
+                headerRow.Add(CreatePill(paramText, "pill--stat"));
             }
 
-            // Annotation pills (inline)
             if (tool.annotations != null)
             {
                 if (tool.annotations.readOnlyHint == true)
@@ -324,7 +277,6 @@ namespace UnityMCP.Editor.UI.Tabs
 
             card.Add(headerRow);
 
-            // Description line
             if (!string.IsNullOrEmpty(tool.description))
             {
                 Label descLabel = new Label(tool.description);
@@ -340,7 +292,6 @@ namespace UnityMCP.Editor.UI.Tabs
                 detailPanel.style.display = DisplayStyle.None;
                 card.Add(detailPanel);
 
-                // Click to toggle
                 card.RegisterCallback<ClickEvent>(evt =>
                 {
                     bool isExpanded = detailPanel.style.display == DisplayStyle.Flex;
@@ -358,7 +309,6 @@ namespace UnityMCP.Editor.UI.Tabs
             VisualElement panel = new VisualElement();
             panel.AddToClassList("reg-detail");
 
-            // Divider
             VisualElement divider = new VisualElement();
             divider.AddToClassList("reg-detail__divider");
             panel.Add(divider);
@@ -371,58 +321,56 @@ namespace UnityMCP.Editor.UI.Tabs
 
             foreach (KeyValuePair<string, PropertySchema> kvp in schema.properties)
             {
-                string paramName = kvp.Key;
-                PropertySchema prop = kvp.Value;
-                bool isRequired = requiredSet.Contains(paramName);
-
-                VisualElement paramRow = new VisualElement();
-                paramRow.AddToClassList("reg-param");
-
-                // Name + type row
-                VisualElement nameTypeRow = new VisualElement();
-                nameTypeRow.AddToClassList("reg-param__header");
-
-                Label nameLabel = new Label(paramName);
-                nameLabel.AddToClassList("reg-param__name");
-                nameTypeRow.Add(nameLabel);
-
-                if (!string.IsNullOrEmpty(prop?.type))
-                {
-                    Label typeLabel = new Label(prop.type);
-                    typeLabel.AddToClassList("reg-param__type");
-                    nameTypeRow.Add(typeLabel);
-                }
-
-                if (isRequired)
-                {
-                    Label reqLabel = new Label("required");
-                    reqLabel.AddToClassList("reg-param__required");
-                    nameTypeRow.Add(reqLabel);
-                }
-
-                paramRow.Add(nameTypeRow);
-
-                // Description
-                if (prop != null && !string.IsNullOrEmpty(prop.description))
-                {
-                    Label descLabel = new Label(prop.description);
-                    descLabel.AddToClassList("reg-param__desc");
-                    paramRow.Add(descLabel);
-                }
-
-                // Metadata line (default, enum, range)
-                string meta = BuildParamMeta(prop);
-                if (!string.IsNullOrEmpty(meta))
-                {
-                    Label metaLabel = new Label(meta);
-                    metaLabel.AddToClassList("reg-param__meta");
-                    paramRow.Add(metaLabel);
-                }
-
-                panel.Add(paramRow);
+                panel.Add(BuildParamRow(kvp.Key, kvp.Value, requiredSet.Contains(kvp.Key)));
             }
 
             return panel;
+        }
+
+        private static VisualElement BuildParamRow(string paramName, PropertySchema prop, bool isRequired)
+        {
+            VisualElement paramRow = new VisualElement();
+            paramRow.AddToClassList("reg-param");
+
+            VisualElement nameTypeRow = new VisualElement();
+            nameTypeRow.AddToClassList("reg-param__header");
+
+            Label nameLabel = new Label(paramName);
+            nameLabel.AddToClassList("reg-param__name");
+            nameTypeRow.Add(nameLabel);
+
+            if (!string.IsNullOrEmpty(prop?.type))
+            {
+                Label typeLabel = new Label(prop.type);
+                typeLabel.AddToClassList("reg-param__type");
+                nameTypeRow.Add(typeLabel);
+            }
+
+            if (isRequired)
+            {
+                Label reqLabel = new Label("required");
+                reqLabel.AddToClassList("reg-param__required");
+                nameTypeRow.Add(reqLabel);
+            }
+
+            paramRow.Add(nameTypeRow);
+
+            if (prop != null && !string.IsNullOrEmpty(prop.description))
+            {
+                Label descLabel = new Label(prop.description);
+                descLabel.AddToClassList("reg-param__desc");
+                paramRow.Add(descLabel);
+            }
+
+            string meta = BuildParamMeta(prop);
+            if (!string.IsNullOrEmpty(meta))
+            {
+                Label metaLabel = new Label(meta);
+                metaLabel.AddToClassList("reg-param__meta");
+                paramRow.Add(metaLabel);
+            }
+
+            return paramRow;
         }
 
         private static string BuildParamMeta(PropertySchema prop)
@@ -453,9 +401,9 @@ namespace UnityMCP.Editor.UI.Tabs
 
         #endregion
 
-        #region Resources Section
+        #region Resources Content
 
-        private bool BuildResourcesSection(string filterLower, bool hasFilter)
+        private bool BuildResourcesContent(string filterLower, bool hasFilter)
         {
             List<ResourceDefinition> resources = ResourceRegistry.GetDefinitions().ToList();
             List<ResourceTemplate> templates = ResourceRegistry.GetTemplateDefinitions().ToList();
@@ -475,56 +423,55 @@ namespace UnityMCP.Editor.UI.Tabs
                 ).ToList();
             }
 
-            int totalCount = resources.Count + templates.Count;
-            if (totalCount == 0) return false;
+            if (resources.Count == 0 && templates.Count == 0) return false;
 
-            // Collapsible section
-            VisualElement sectionGroup = new VisualElement();
+            // Group by derived category
+            var resourcesByCategory = resources
+                .GroupBy(r => DeriveResourceCategory(r.uri))
+                .OrderBy(g => g.Key);
 
-            VisualElement sectionHeader = new VisualElement();
-            sectionHeader.AddToClassList("reg-section-header");
-            sectionHeader.AddToClassList("reg-section-header--resource");
-            sectionHeader.AddToClassList("reg-section-header--clickable");
+            var templatesByCategory = templates
+                .GroupBy(t => DeriveResourceCategory(t.uriTemplate))
+                .OrderBy(g => g.Key);
 
-            Label arrowLabel = new Label(hasFilter ? "\u25BC" : "\u25B6");
-            arrowLabel.AddToClassList("reg-section-arrow");
-            sectionHeader.Add(arrowLabel);
+            // Merge categories
+            Dictionary<string, List<VisualElement>> categoryCards = new Dictionary<string, List<VisualElement>>();
 
-            Label sectionLabel = new Label("Resources");
-            sectionLabel.AddToClassList("reg-section-label");
-            sectionHeader.Add(sectionLabel);
-
-            Label sectionCount = new Label($"{totalCount}");
-            sectionCount.AddToClassList("reg-section-count");
-            sectionHeader.Add(sectionCount);
-
-            sectionGroup.Add(sectionHeader);
-
-            VisualElement cardsContainer = new VisualElement();
-            cardsContainer.style.display = hasFilter ? DisplayStyle.Flex : DisplayStyle.None;
-
-            foreach (ResourceDefinition resource in resources)
+            foreach (var group in resourcesByCategory)
             {
-                cardsContainer.Add(BuildResourceCard(resource));
+                if (!categoryCards.ContainsKey(group.Key))
+                    categoryCards[group.Key] = new List<VisualElement>();
+                foreach (ResourceDefinition resource in group)
+                    categoryCards[group.Key].Add(BuildResourceCard(resource));
             }
 
-            foreach (ResourceTemplate template in templates)
+            foreach (var group in templatesByCategory)
             {
-                cardsContainer.Add(BuildTemplateCard(template));
+                if (!categoryCards.ContainsKey(group.Key))
+                    categoryCards[group.Key] = new List<VisualElement>();
+                foreach (ResourceTemplate template in group)
+                    categoryCards[group.Key].Add(BuildTemplateCard(template));
             }
 
-            sectionGroup.Add(cardsContainer);
-
-            sectionHeader.RegisterCallback<ClickEvent>(evt =>
+            foreach (var kvp in categoryCards.OrderBy(k => k.Key))
             {
-                bool isExpanded = cardsContainer.style.display == DisplayStyle.Flex;
-                cardsContainer.style.display = isExpanded ? DisplayStyle.None : DisplayStyle.Flex;
-                arrowLabel.text = isExpanded ? "\u25B6" : "\u25BC";
-            });
-
-            _listContainer.Add(sectionGroup);
+                _listContainer.Add(BuildCollapsibleSection(kvp.Key, kvp.Value.Count, hasFilter, container =>
+                {
+                    foreach (VisualElement card in kvp.Value)
+                        container.Add(card);
+                }, "reg-section-header--resource"));
+            }
 
             return true;
+        }
+
+        private static string DeriveResourceCategory(string uri)
+        {
+            if (string.IsNullOrEmpty(uri)) return "Other";
+            int schemeEnd = uri.IndexOf("://", StringComparison.Ordinal);
+            if (schemeEnd < 0) return "Other";
+            string scheme = uri.Substring(0, schemeEnd);
+            return char.ToUpper(scheme[0]) + scheme.Substring(1);
         }
 
         private static VisualElement BuildResourceCard(ResourceDefinition resource)
@@ -533,7 +480,6 @@ namespace UnityMCP.Editor.UI.Tabs
             card.AddToClassList("reg-card");
             card.AddToClassList("reg-card--resource");
 
-            // Header row: name + mime pill
             VisualElement headerRow = new VisualElement();
             headerRow.AddToClassList("reg-card__header");
 
@@ -542,13 +488,10 @@ namespace UnityMCP.Editor.UI.Tabs
             headerRow.Add(nameLabel);
 
             if (!string.IsNullOrEmpty(resource.mimeType))
-            {
                 headerRow.Add(CreatePill(resource.mimeType, "pill--readonly"));
-            }
 
             card.Add(headerRow);
 
-            // URI
             if (!string.IsNullOrEmpty(resource.uri))
             {
                 Label uriLabel = new Label(resource.uri);
@@ -556,7 +499,6 @@ namespace UnityMCP.Editor.UI.Tabs
                 card.Add(uriLabel);
             }
 
-            // Description
             if (!string.IsNullOrEmpty(resource.description))
             {
                 Label descLabel = new Label(resource.description);
@@ -573,7 +515,6 @@ namespace UnityMCP.Editor.UI.Tabs
             card.AddToClassList("reg-card");
             card.AddToClassList("reg-card--resource");
 
-            // Header row
             VisualElement headerRow = new VisualElement();
             headerRow.AddToClassList("reg-card__header");
 
@@ -584,13 +525,10 @@ namespace UnityMCP.Editor.UI.Tabs
             headerRow.Add(CreatePill("template", "pill--idempotent"));
 
             if (!string.IsNullOrEmpty(template.mimeType))
-            {
                 headerRow.Add(CreatePill(template.mimeType, "pill--readonly"));
-            }
 
             card.Add(headerRow);
 
-            // URI template
             if (!string.IsNullOrEmpty(template.uriTemplate))
             {
                 Label uriLabel = new Label(template.uriTemplate);
@@ -598,7 +536,6 @@ namespace UnityMCP.Editor.UI.Tabs
                 card.Add(uriLabel);
             }
 
-            // Description
             if (!string.IsNullOrEmpty(template.description))
             {
                 Label descLabel = new Label(template.description);
@@ -611,9 +548,9 @@ namespace UnityMCP.Editor.UI.Tabs
 
         #endregion
 
-        #region Prompts Section
+        #region Prompts Content
 
-        private bool BuildPromptsSection(string filterLower, bool hasFilter)
+        private bool BuildPromptsContent(string filterLower, bool hasFilter)
         {
             List<PromptDefinition> prompts = PromptRegistry.GetDefinitions().ToList();
 
@@ -627,46 +564,10 @@ namespace UnityMCP.Editor.UI.Tabs
 
             if (prompts.Count == 0) return false;
 
-            // Collapsible section
-            VisualElement sectionGroup = new VisualElement();
-
-            VisualElement sectionHeader = new VisualElement();
-            sectionHeader.AddToClassList("reg-section-header");
-            sectionHeader.AddToClassList("reg-section-header--prompt");
-            sectionHeader.AddToClassList("reg-section-header--clickable");
-
-            Label arrowLabel = new Label(hasFilter ? "\u25BC" : "\u25B6");
-            arrowLabel.AddToClassList("reg-section-arrow");
-            sectionHeader.Add(arrowLabel);
-
-            Label sectionLabel = new Label("Prompts");
-            sectionLabel.AddToClassList("reg-section-label");
-            sectionHeader.Add(sectionLabel);
-
-            Label sectionCount = new Label($"{prompts.Count}");
-            sectionCount.AddToClassList("reg-section-count");
-            sectionHeader.Add(sectionCount);
-
-            sectionGroup.Add(sectionHeader);
-
-            VisualElement cardsContainer = new VisualElement();
-            cardsContainer.style.display = hasFilter ? DisplayStyle.Flex : DisplayStyle.None;
-
             foreach (PromptDefinition prompt in prompts)
             {
-                cardsContainer.Add(BuildPromptCard(prompt));
+                _listContainer.Add(BuildPromptCard(prompt));
             }
-
-            sectionGroup.Add(cardsContainer);
-
-            sectionHeader.RegisterCallback<ClickEvent>(evt =>
-            {
-                bool isExpanded = cardsContainer.style.display == DisplayStyle.Flex;
-                cardsContainer.style.display = isExpanded ? DisplayStyle.None : DisplayStyle.Flex;
-                arrowLabel.text = isExpanded ? "\u25B6" : "\u25BC";
-            });
-
-            _listContainer.Add(sectionGroup);
 
             return true;
         }
@@ -677,7 +578,6 @@ namespace UnityMCP.Editor.UI.Tabs
             card.AddToClassList("reg-card");
             card.AddToClassList("reg-card--prompt");
 
-            // Header row
             VisualElement headerRow = new VisualElement();
             headerRow.AddToClassList("reg-card__header");
 
@@ -698,7 +598,6 @@ namespace UnityMCP.Editor.UI.Tabs
 
             card.Add(headerRow);
 
-            // Description
             if (!string.IsNullOrEmpty(prompt.description))
             {
                 Label descLabel = new Label(prompt.description);
@@ -706,7 +605,6 @@ namespace UnityMCP.Editor.UI.Tabs
                 card.Add(descLabel);
             }
 
-            // Expandable argument detail
             if (prompt.arguments != null && prompt.arguments.Count > 0)
             {
                 VisualElement detailPanel = BuildPromptDetailPanel(prompt.arguments);
@@ -770,6 +668,192 @@ namespace UnityMCP.Editor.UI.Tabs
             }
 
             return panel;
+        }
+
+        #endregion
+
+        #region Recipes Content
+
+        private bool BuildRecipesContent(string filterLower, bool hasFilter)
+        {
+            List<RecipeInfo> recipes = RecipeRegistry.GetDefinitions().ToList();
+
+            if (hasFilter)
+            {
+                recipes = recipes.Where(r =>
+                    MatchesFilter(r.Name, filterLower) ||
+                    MatchesFilter(r.Description, filterLower)
+                ).ToList();
+            }
+
+            if (recipes.Count == 0) return false;
+
+            foreach (RecipeInfo recipe in recipes)
+            {
+                _listContainer.Add(BuildRecipeCard(recipe));
+            }
+
+            return true;
+        }
+
+        private static VisualElement BuildRecipeCard(RecipeInfo recipe)
+        {
+            VisualElement card = new VisualElement();
+            card.AddToClassList("reg-card");
+            card.AddToClassList("reg-card--recipe");
+
+            VisualElement headerRow = new VisualElement();
+            headerRow.AddToClassList("reg-card__header");
+
+            Label nameLabel = new Label(recipe.Name);
+            nameLabel.AddToClassList("reg-card__name");
+            headerRow.Add(nameLabel);
+
+            List<RecipeParameterMetadata> parameters = recipe.GetParameterMetadata().ToList();
+            if (parameters.Count > 0)
+            {
+                int requiredParams = parameters.Count(p => p.Required);
+                string paramText = requiredParams > 0
+                    ? $"{parameters.Count} params ({requiredParams} req)"
+                    : $"{parameters.Count} params";
+
+                headerRow.Add(CreatePill(paramText, "pill--stat"));
+            }
+
+            card.Add(headerRow);
+
+            if (!string.IsNullOrEmpty(recipe.Description))
+            {
+                Label descLabel = new Label(recipe.Description);
+                descLabel.AddToClassList("reg-card__desc");
+                card.Add(descLabel);
+            }
+
+            // Expandable parameter detail
+            if (parameters.Count > 0)
+            {
+                VisualElement detailPanel = BuildRecipeDetailPanel(parameters);
+                detailPanel.style.display = DisplayStyle.None;
+                card.Add(detailPanel);
+
+                card.RegisterCallback<ClickEvent>(evt =>
+                {
+                    bool isExpanded = detailPanel.style.display == DisplayStyle.Flex;
+                    detailPanel.style.display = isExpanded ? DisplayStyle.None : DisplayStyle.Flex;
+                    card.EnableInClassList("reg-card--expanded", !isExpanded);
+                });
+                card.AddToClassList("reg-card--clickable");
+            }
+
+            return card;
+        }
+
+        private static VisualElement BuildRecipeDetailPanel(List<RecipeParameterMetadata> parameters)
+        {
+            VisualElement panel = new VisualElement();
+            panel.AddToClassList("reg-detail");
+
+            VisualElement divider = new VisualElement();
+            divider.AddToClassList("reg-detail__divider");
+            panel.Add(divider);
+
+            Label headerLabel = new Label("PARAMETERS");
+            headerLabel.AddToClassList("reg-detail__header");
+            panel.Add(headerLabel);
+
+            foreach (RecipeParameterMetadata param in parameters)
+            {
+                VisualElement paramRow = new VisualElement();
+                paramRow.AddToClassList("reg-param");
+
+                VisualElement nameTypeRow = new VisualElement();
+                nameTypeRow.AddToClassList("reg-param__header");
+
+                Label nameLabel = new Label(param.Name);
+                nameLabel.AddToClassList("reg-param__name");
+                nameTypeRow.Add(nameLabel);
+
+                if (!string.IsNullOrEmpty(param.JsonType))
+                {
+                    Label typeLabel = new Label(param.JsonType);
+                    typeLabel.AddToClassList("reg-param__type");
+                    nameTypeRow.Add(typeLabel);
+                }
+
+                if (param.Required)
+                {
+                    Label reqLabel = new Label("required");
+                    reqLabel.AddToClassList("reg-param__required");
+                    nameTypeRow.Add(reqLabel);
+                }
+
+                paramRow.Add(nameTypeRow);
+
+                if (!string.IsNullOrEmpty(param.Description))
+                {
+                    Label descLabel = new Label(param.Description);
+                    descLabel.AddToClassList("reg-param__desc");
+                    paramRow.Add(descLabel);
+                }
+
+                // Default value
+                if (param.ParameterInfo.HasDefaultValue && param.ParameterInfo.DefaultValue != null)
+                {
+                    Label defaultLabel = new Label($"default: {param.ParameterInfo.DefaultValue}");
+                    defaultLabel.AddToClassList("reg-param__meta");
+                    paramRow.Add(defaultLabel);
+                }
+
+                panel.Add(paramRow);
+            }
+
+            return panel;
+        }
+
+        #endregion
+
+        #region Collapsible Section Builder
+
+        private static VisualElement BuildCollapsibleSection(string title, int count, bool startExpanded,
+            Action<VisualElement> populateCards, string extraHeaderClass = null)
+        {
+            VisualElement sectionGroup = new VisualElement();
+
+            VisualElement sectionHeader = new VisualElement();
+            sectionHeader.AddToClassList("reg-section-header");
+            sectionHeader.AddToClassList("reg-section-header--clickable");
+            if (!string.IsNullOrEmpty(extraHeaderClass))
+                sectionHeader.AddToClassList(extraHeaderClass);
+
+            Label arrowLabel = new Label(startExpanded ? "\u25BC" : "\u25B6");
+            arrowLabel.AddToClassList("reg-section-arrow");
+            sectionHeader.Add(arrowLabel);
+
+            Label sectionLabel = new Label(title);
+            sectionLabel.AddToClassList("reg-section-label");
+            sectionHeader.Add(sectionLabel);
+
+            Label sectionCount = new Label($"{count}");
+            sectionCount.AddToClassList("reg-section-count");
+            sectionHeader.Add(sectionCount);
+
+            sectionGroup.Add(sectionHeader);
+
+            VisualElement cardsContainer = new VisualElement();
+            cardsContainer.style.display = startExpanded ? DisplayStyle.Flex : DisplayStyle.None;
+
+            populateCards(cardsContainer);
+
+            sectionGroup.Add(cardsContainer);
+
+            sectionHeader.RegisterCallback<ClickEvent>(evt =>
+            {
+                bool isExpanded = cardsContainer.style.display == DisplayStyle.Flex;
+                cardsContainer.style.display = isExpanded ? DisplayStyle.None : DisplayStyle.Flex;
+                arrowLabel.text = isExpanded ? "\u25B6" : "\u25BC";
+            });
+
+            return sectionGroup;
         }
 
         #endregion
