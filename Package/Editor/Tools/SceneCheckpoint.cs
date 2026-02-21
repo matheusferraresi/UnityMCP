@@ -17,7 +17,7 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Saves a new scene checkpoint or lists all existing checkpoints.
         /// </summary>
-        [MCPTool("scene_checkpoint", "Save or list scene checkpoints for undo/restore capability", Category = "Scene")]
+        [MCPTool("scene_checkpoint", "Save or list scene checkpoints for undo/restore capability", Category = "Scene", DestructiveHint = true)]
         public static object Checkpoint(
             [MCPParam("action", "Action: 'save' to create checkpoint, 'list' to view all checkpoints", required: true, Enum = new[] { "save", "list" })] string action,
             [MCPParam("name", "Optional name for the checkpoint (save only)")] string name = null)

@@ -187,7 +187,11 @@ namespace UnityMCP.Editor.Tools
                 bool truncated = endIndex < rootCount;
 
                 summaryBuilder.AppendLine();
-                if (truncated || resolvedCursor > 0)
+                if (resolvedCursor >= endIndex && rootCount > 0)
+                {
+                    summaryBuilder.AppendLine($"Key Objects: (no objects at offset {resolvedCursor}, {rootCount} total)");
+                }
+                else if (truncated || resolvedCursor > 0)
                 {
                     summaryBuilder.AppendLine($"Key Objects: (root GameObjects {resolvedCursor + 1}-{endIndex} of {rootCount})");
                 }
@@ -223,10 +227,15 @@ namespace UnityMCP.Editor.Tools
                     summaryBuilder.AppendLine("Issues Detected: None");
                 }
 
+                int? nextCursor = truncated ? endIndex : (int?)null;
+
                 return new
                 {
                     success = true,
                     description = summaryBuilder.ToString().TrimEnd(),
+                    cursor = resolvedCursor,
+                    pageSize = resolvedPageSize,
+                    nextCursor,
                     total = rootCount,
                     truncated
                 };

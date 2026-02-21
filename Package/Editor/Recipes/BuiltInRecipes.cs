@@ -3,6 +3,9 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.EventSystems;
+#if UNITY_MCP_INPUT_SYSTEM
+using UnityEngine.InputSystem.UI;
+#endif
 using UnityMCP.Editor;
 
 namespace UnityMCP.Editor.Recipes
@@ -55,6 +58,7 @@ namespace UnityMCP.Editor.Recipes
             var cameraGameObject = new GameObject("Main Camera");
             cameraGameObject.tag = "MainCamera";
             cameraGameObject.AddComponent<Camera>();
+            cameraGameObject.AddComponent<AudioListener>();
             cameraGameObject.transform.SetParent(playerGameObject.transform);
             cameraGameObject.transform.localPosition = new Vector3(0, 0.8f, 0);
             cameraGameObject.transform.localRotation = Quaternion.identity;
@@ -90,7 +94,11 @@ namespace UnityMCP.Editor.Recipes
             // EventSystem
             var eventSystemGameObject = new GameObject("EventSystem");
             eventSystemGameObject.AddComponent<EventSystem>();
+#if UNITY_MCP_INPUT_SYSTEM
+            eventSystemGameObject.AddComponent<InputSystemUIInputModule>();
+#else
             eventSystemGameObject.AddComponent<StandaloneInputModule>();
+#endif
             Undo.RegisterCreatedObjectUndo(eventSystemGameObject, "Create EventSystem");
             createdObjects.Add("EventSystem");
 
@@ -172,6 +180,7 @@ namespace UnityMCP.Editor.Recipes
             var cameraGameObject = new GameObject("Main Camera");
             cameraGameObject.tag = "MainCamera";
             cameraGameObject.AddComponent<Camera>();
+            cameraGameObject.AddComponent<AudioListener>();
             cameraGameObject.transform.position = new Vector3(0, 5, -10);
             cameraGameObject.transform.LookAt(Vector3.zero);
             Undo.RegisterCreatedObjectUndo(cameraGameObject, "Create Main Camera");

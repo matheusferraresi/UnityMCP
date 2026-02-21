@@ -381,12 +381,34 @@ namespace UnityMCP.Editor.Services
                     totalCountB = metadataB.totalObjectCount;
                 }
 
-                // Compute diff using name lists
-                HashSet<string> setA = new HashSet<string>(rootNamesA);
-                HashSet<string> setB = new HashSet<string>(rootNamesB);
+                // Compute diff using count-aware comparison (handles duplicate names)
+                Dictionary<string, int> countsA = BuildNameCounts(rootNamesA);
+                Dictionary<string, int> countsB = BuildNameCounts(rootNamesB);
 
-                List<string> addedObjects = rootNamesB.Where(objectName => !setA.Contains(objectName)).ToList();
-                List<string> removedObjects = rootNamesA.Where(objectName => !setB.Contains(objectName)).ToList();
+                var addedObjects = new List<string>();
+                var removedObjects = new List<string>();
+
+                // Find added objects (in B but not enough in A)
+                foreach (var kvp in countsB)
+                {
+                    countsA.TryGetValue(kvp.Key, out int countInA);
+                    int addedCount = kvp.Value - countInA;
+                    for (int i = 0; i < addedCount; i++)
+                    {
+                        addedObjects.Add(kvp.Key);
+                    }
+                }
+
+                // Find removed objects (in A but not enough in B)
+                foreach (var kvp in countsA)
+                {
+                    countsB.TryGetValue(kvp.Key, out int countInB);
+                    int removedCount = kvp.Value - countInB;
+                    for (int i = 0; i < removedCount; i++)
+                    {
+                        removedObjects.Add(kvp.Key);
+                    }
+                }
 
                 return new CheckpointDiff
                 {
@@ -398,6 +420,26 @@ namespace UnityMCP.Editor.Services
                     totalCountB = totalCountB
                 };
             }
+        }
+
+        /// <summary>
+        /// Builds a dictionary of name occurrence counts from a list of names.
+        /// </summary>
+        private static Dictionary<string, int> BuildNameCounts(List<string> names)
+        {
+            var counts = new Dictionary<string, int>();
+            foreach (string name in names)
+            {
+                if (counts.ContainsKey(name))
+                {
+                    counts[name]++;
+                }
+                else
+                {
+                    counts[name] = 1;
+                }
+            }
+            return counts;
         }
 
         /// <summary>
