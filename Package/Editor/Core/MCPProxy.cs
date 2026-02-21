@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using UnityEditor;
@@ -330,6 +331,9 @@ namespace UnityMCP.Editor.Core
                 string jsonRequest = Marshal.PtrToStringAnsi(ptr);
                 string requestId = ExtractRequestId(jsonRequest);
                 string toolName = ExtractToolName(jsonRequest);
+                string argumentsSummary = toolName != null ? ExtractArguments(jsonRequest) : null;
+
+                var stopwatch = Stopwatch.StartNew();
 
                 try
                 {
@@ -337,6 +341,7 @@ namespace UnityMCP.Editor.Core
 
                     if (response != null && response.Length >= MaxResponseSize)
                     {
+                        stopwatch.Stop();
                         Debug.LogWarning($"[MCPProxy] Response size ({response.Length} bytes) exceeds maximum ({MaxResponseSize} bytes). Returning error response.");
                         string errorResponse = BuildErrorResponse(
                             -32603,
@@ -344,20 +349,25 @@ namespace UnityMCP.Editor.Core
                             requestId);
                         SendResponse(errorResponse);
                         if (toolName != null)
-                            ActivityLog.Record(toolName, false, "Response too large");
+                            ActivityLog.Record(toolName, false, "Response too large",
+                                stopwatch.ElapsedMilliseconds, argumentsSummary, response.Length);
                         return;
                     }
 
                     SendResponse(response);
+                    stopwatch.Stop();
                     if (toolName != null)
-                        ActivityLog.Record(toolName, true);
+                        ActivityLog.Record(toolName, true, null,
+                            stopwatch.ElapsedMilliseconds, argumentsSummary, response?.Length ?? 0);
                 }
                 catch (Exception exception)
                 {
+                    stopwatch.Stop();
                     string errorResponse = BuildErrorResponse(-32603, exception.Message, requestId);
                     SendResponse(errorResponse);
                     if (toolName != null)
-                        ActivityLog.Record(toolName, false, exception.Message);
+                        ActivityLog.Record(toolName, false, exception.Message,
+                            stopwatch.ElapsedMilliseconds, argumentsSummary, 0);
                 }
             }
             finally
@@ -519,6 +529,83 @@ namespace UnityMCP.Editor.Core
                 return null;
 
             return json.Substring(valueStart + 1, endQuote - valueStart - 1);
+        }
+
+        /// <summary>
+        /// Extracts a compact summary of tool arguments from a JSON-RPC request.
+        /// Uses brace-matching to find the "arguments" object, then truncates to maxLength.
+        /// Returns null for non-tool-call requests or if arguments not found.
+        /// </summary>
+        private static string ExtractArguments(string json, int maxLength = 120)
+        {
+            if (string.IsNullOrEmpty(json))
+                return null;
+
+            int paramsIndex = json.IndexOf("\"params\"", StringComparison.Ordinal);
+            if (paramsIndex < 0)
+                return null;
+
+            int argsKeyIndex = json.IndexOf("\"arguments\"", paramsIndex, StringComparison.Ordinal);
+            if (argsKeyIndex < 0)
+                return null;
+
+            int colonIndex = json.IndexOf(':', argsKeyIndex + 11);
+            if (colonIndex < 0)
+                return null;
+
+            int valueStart = colonIndex + 1;
+            while (valueStart < json.Length && char.IsWhiteSpace(json[valueStart]))
+                valueStart++;
+
+            if (valueStart >= json.Length || json[valueStart] != '{')
+                return null;
+
+            // Brace-match to find the end of the arguments object
+            int depth = 0;
+            int valueEnd = valueStart;
+            bool inString = false;
+            bool escaped = false;
+
+            for (int i = valueStart; i < json.Length; i++)
+            {
+                char c = json[i];
+                if (escaped)
+                {
+                    escaped = false;
+                    continue;
+                }
+                if (c == '\\' && inString)
+                {
+                    escaped = true;
+                    continue;
+                }
+                if (c == '"')
+                {
+                    inString = !inString;
+                    continue;
+                }
+                if (inString) continue;
+
+                if (c == '{') depth++;
+                else if (c == '}')
+                {
+                    depth--;
+                    if (depth == 0)
+                    {
+                        valueEnd = i + 1;
+                        break;
+                    }
+                }
+            }
+
+            if (depth != 0)
+                return null;
+
+            string argsJson = json.Substring(valueStart, valueEnd - valueStart);
+            if (argsJson.Length > maxLength)
+                argsJson = argsJson.Substring(0, maxLength) + "...";
+
+            return argsJson;
         }
 
         /// <summary>
