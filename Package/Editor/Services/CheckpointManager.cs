@@ -11,7 +11,8 @@ using UnityEngine.SceneManagement;
 namespace UnityMCP.Editor.Services
 {
     /// <summary>
-    /// Metadata for a scene checkpoint, stored alongside the saved scene file.
+    /// Metadata for a scene checkpoint bucket, stored alongside the saved scene file.
+    /// Each bucket captures a scene snapshot and optionally tracked asset snapshots.
     /// </summary>
     [Serializable]
     public class CheckpointMetadata
@@ -24,13 +25,16 @@ namespace UnityMCP.Editor.Services
         public int rootObjectCount;
         public int totalObjectCount;
         public List<string> rootObjectNames = new List<string>();
+        public List<string> trackedAssetPaths = new List<string>();
+        public bool isFrozen;
 
         /// <summary>
         /// Converts metadata to a serializable format for JSON output.
+        /// Omits null/empty fields to minimize token usage.
         /// </summary>
         public object ToSerializable()
         {
-            return new Dictionary<string, object>
+            var result = new Dictionary<string, object>
             {
                 { "id", id },
                 { "name", name },
@@ -40,11 +44,21 @@ namespace UnityMCP.Editor.Services
                 { "root_object_count", rootObjectCount },
                 { "total_object_count", totalObjectCount }
             };
+
+            if (trackedAssetPaths != null && trackedAssetPaths.Count > 0)
+            {
+                result["tracked_asset_count"] = trackedAssetPaths.Count;
+            }
+
+            result["is_frozen"] = isFrozen;
+
+            return result;
         }
     }
 
     /// <summary>
-    /// Result of comparing two checkpoint states, reporting added and removed root objects.
+    /// Result of comparing two checkpoint states, reporting added and removed root objects
+    /// and tracked asset differences.
     /// </summary>
     public class CheckpointDiff
     {
@@ -54,9 +68,12 @@ namespace UnityMCP.Editor.Services
         public int rootCountB;
         public int totalCountA;
         public int totalCountB;
+        public List<string> trackedAssetsA = new List<string>();
+        public List<string> trackedAssetsB = new List<string>();
 
         /// <summary>
         /// Converts the diff result to a serializable format for JSON output.
+        /// Omits empty collections to minimize token usage.
         /// </summary>
         public object ToSerializable()
         {
@@ -80,32 +97,115 @@ namespace UnityMCP.Editor.Services
                 result["removed"] = removedObjects;
             }
 
+            if (trackedAssetsA.Count > 0)
+            {
+                result["tracked_assets_a"] = trackedAssetsA;
+            }
+
+            if (trackedAssetsB.Count > 0)
+            {
+                result["tracked_assets_b"] = trackedAssetsB;
+            }
+
             return result;
         }
     }
 
     /// <summary>
-    /// Manages scene checkpoint storage for save/restore/diff operations.
-    /// Checkpoints are stored as scene file copies with metadata in a temp directory.
-    /// File-based storage survives domain reloads.
+    /// Manages scene checkpoint storage using a bucket model for save/restore/diff operations.
+    /// Each bucket captures a scene file copy, metadata JSON, and optionally tracked asset snapshots.
+    /// Buckets are either active (mutable, accepting new tracked assets) or frozen (immutable).
+    /// File-based storage in a temp directory survives domain reloads.
     /// </summary>
     public static class CheckpointManager
     {
         #region Constants
 
         /// <summary>
-        /// Maximum number of checkpoints to keep. Oldest are evicted when this limit is exceeded.
+        /// Maximum number of buckets to keep. Oldest frozen buckets are evicted when exceeded.
         /// </summary>
-        private const int MaxCheckpoints = 20;
+        private const int MaxBuckets = 20;
+
+        /// <summary>
+        /// Maximum age for frozen buckets before they are eligible for age-based eviction.
+        /// </summary>
+        private static readonly TimeSpan MaxBucketAge = TimeSpan.FromHours(24);
+
+        /// <summary>
+        /// Asset file extensions to scan for dirty assets as a belt-and-suspenders check.
+        /// </summary>
+        private static readonly string[] TrackedAssetExtensions = { ".prefab", ".asset", ".mat" };
 
         private static readonly object _lock = new object();
+
+        #endregion
+
+        #region Track API
+
+        /// <summary>
+        /// Paths of assets pending inclusion in the next checkpoint save.
+        /// Populated via Track() calls; consumed by SaveCheckpoint().
+        /// </summary>
+        private static readonly HashSet<string> _pendingTrackedPaths = new HashSet<string>();
+
+        /// <summary>
+        /// Registers a Unity object's asset path for inclusion in the next checkpoint.
+        /// Thread-safe; can be called from any thread.
+        /// </summary>
+        /// <param name="obj">A Unity object that has an asset path (e.g., material, prefab).</param>
+        public static void Track(UnityEngine.Object obj)
+        {
+            if (obj == null) return;
+            string assetPath = AssetDatabase.GetAssetPath(obj);
+            if (!string.IsNullOrEmpty(assetPath))
+                lock (_lock) { _pendingTrackedPaths.Add(assetPath); }
+        }
+
+        /// <summary>
+        /// Registers an asset path for inclusion in the next checkpoint.
+        /// Thread-safe; can be called from any thread.
+        /// </summary>
+        /// <param name="assetPath">An asset path relative to the project root (e.g., "Assets/Materials/Foo.mat").</param>
+        public static void Track(string assetPath)
+        {
+            if (string.IsNullOrEmpty(assetPath)) return;
+            lock (_lock) { _pendingTrackedPaths.Add(assetPath); }
+        }
+
+        /// <summary>
+        /// Returns true if there are any pending tracked asset paths awaiting checkpoint save.
+        /// </summary>
+        public static bool HasPendingTracks
+        {
+            get { lock (_lock) { return _pendingTrackedPaths.Count > 0; } }
+        }
+
+        /// <summary>
+        /// Returns a snapshot copy of all pending tracked asset paths.
+        /// </summary>
+        public static IReadOnlyCollection<string> PendingTracks
+        {
+            get { lock (_lock) { return new List<string>(_pendingTrackedPaths); } }
+        }
+
+        /// <summary>
+        /// Atomically consumes and returns the current set of pending tracked paths, clearing the internal set.
+        /// Caller must hold _lock.
+        /// </summary>
+        private static HashSet<string> ConsumePendingTracks()
+        {
+            var consumed = new HashSet<string>(_pendingTrackedPaths);
+            _pendingTrackedPaths.Clear();
+            return consumed;
+        }
 
         #endregion
 
         #region Properties
 
         /// <summary>
-        /// Gets the directory where checkpoints are stored.
+        /// Gets the directory where checkpoint buckets are stored.
+        /// Creates the directory if it does not exist.
         /// </summary>
         private static string CheckpointDirectory
         {
@@ -125,12 +225,15 @@ namespace UnityMCP.Editor.Services
         #region Public Methods
 
         /// <summary>
-        /// Saves a checkpoint of the current scene state.
-        /// Copies the saved scene file and records metadata including root object names.
+        /// Saves a checkpoint bucket of the current scene and tracked assets.
+        /// If newBucket is false and an active (non-frozen) bucket exists, merges into it.
+        /// If newBucket is true or no active bucket exists, creates a new bucket and freezes the old one.
+        /// Returns null if there are no changes to save (no pending tracks and scene is not dirty).
         /// </summary>
-        /// <param name="checkpointName">Optional human-readable name for the checkpoint.</param>
-        /// <returns>The metadata for the newly created checkpoint, or null on failure.</returns>
-        public static CheckpointMetadata SaveCheckpoint(string checkpointName = null)
+        /// <param name="name">Optional human-readable name for the checkpoint.</param>
+        /// <param name="newBucket">If true, always creates a new bucket (freezing the current active one).</param>
+        /// <returns>The metadata for the saved/updated checkpoint, or null if nothing to save.</returns>
+        public static CheckpointMetadata SaveCheckpoint(string name = null, bool newBucket = false)
         {
             lock (_lock)
             {
@@ -141,83 +244,61 @@ namespace UnityMCP.Editor.Services
                     return null;
                 }
 
-                // Save current scene state first
-                if (!string.IsNullOrEmpty(activeScene.path))
-                {
-                    EditorSceneManager.SaveScene(activeScene);
-                }
-                else
+                if (string.IsNullOrEmpty(activeScene.path))
                 {
                     Debug.LogWarning("[CheckpointManager] Cannot save checkpoint: scene has no path. Save the scene first.");
                     return null;
                 }
 
-                // Generate checkpoint ID and paths
-                string checkpointId = Guid.NewGuid().ToString("N").Substring(0, 12);
-                string checkpointScenePath = Path.Combine(CheckpointDirectory, $"{checkpointId}.unity");
-                string checkpointMetadataPath = Path.Combine(CheckpointDirectory, $"{checkpointId}.json");
+                // Step 1: Consume pending tracks
+                HashSet<string> consumedTracks = ConsumePendingTracks();
 
-                // Copy scene file to checkpoint location
+                // Step 2: Belt-and-suspenders - find dirty assets with tracked extensions
+                HashSet<string> dirtyAssetPaths = FindDirtyTrackedAssets();
+                consumedTracks.UnionWith(dirtyAssetPaths);
+
+                // Step 3: Remove the active scene path from tracked assets (scene is always handled separately)
+                consumedTracks.Remove(activeScene.path);
+
+                // Step 4: Check if there is anything to save
+                bool sceneIsDirty = activeScene.isDirty;
+                if (consumedTracks.Count == 0 && !sceneIsDirty)
+                {
+                    return null;
+                }
+
+                // Save current scene state to disk before copying
+                EditorSceneManager.SaveScene(activeScene);
+
                 string projectRoot = Path.GetDirectoryName(Application.dataPath);
                 string fullScenePath = Path.Combine(projectRoot, activeScene.path);
 
-                try
-                {
-                    File.Copy(fullScenePath, checkpointScenePath, overwrite: true);
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogWarning($"[CheckpointManager] Failed to copy scene file: {exception.Message}");
-                    return null;
-                }
+                // Find the current active (non-frozen) bucket, if any
+                CheckpointMetadata activeBucket = FindActiveBucket();
 
-                // Gather root object information for diff support
-                GameObject[] rootObjects = activeScene.GetRootGameObjects();
-                List<string> rootObjectNames = rootObjects
-                    .Where(go => go != null)
-                    .Select(go => go.name)
-                    .ToList();
-
-                int totalObjectCount = 0;
-                foreach (GameObject rootObject in rootObjects)
+                if (!newBucket && activeBucket != null)
                 {
-                    if (rootObject != null)
+                    // Step 5: Merge into existing active bucket
+                    return MergeIntoActiveBucket(activeBucket, activeScene, fullScenePath, consumedTracks);
+                }
+                else
+                {
+                    // Step 6: Freeze old active bucket and create a new one
+                    if (activeBucket != null)
                     {
-                        totalObjectCount += rootObject.GetComponentsInChildren<Transform>(includeInactive: true).Length;
+                        FreezeBucket(activeBucket);
                     }
+
+                    CheckpointMetadata newMetadata = CreateNewBucket(name, activeScene, fullScenePath, consumedTracks);
+
+                    if (newMetadata != null)
+                    {
+                        // Step 7: Enforce retention limits
+                        EnforceRetentionLimits();
+                    }
+
+                    return newMetadata;
                 }
-
-                // Build metadata
-                CheckpointMetadata metadata = new CheckpointMetadata
-                {
-                    id = checkpointId,
-                    name = checkpointName ?? $"Checkpoint {DateTime.Now:HH:mm:ss}",
-                    timestamp = DateTime.UtcNow,
-                    sceneName = activeScene.name,
-                    scenePath = activeScene.path,
-                    rootObjectCount = rootObjects.Length,
-                    totalObjectCount = totalObjectCount,
-                    rootObjectNames = rootObjectNames
-                };
-
-                // Write metadata JSON
-                try
-                {
-                    string metadataJson = JsonConvert.SerializeObject(metadata, Formatting.Indented);
-                    File.WriteAllText(checkpointMetadataPath, metadataJson);
-                }
-                catch (Exception exception)
-                {
-                    Debug.LogWarning($"[CheckpointManager] Failed to write metadata: {exception.Message}");
-                    // Clean up the scene file since metadata write failed
-                    TryDeleteFile(checkpointScenePath);
-                    return null;
-                }
-
-                // Enforce checkpoint limit (FIFO eviction)
-                EnforceCheckpointLimit();
-
-                return metadata;
             }
         }
 
@@ -229,50 +310,12 @@ namespace UnityMCP.Editor.Services
         {
             lock (_lock)
             {
-                var checkpoints = new List<CheckpointMetadata>();
-                string checkpointDirectory = CheckpointDirectory;
-
-                string[] metadataFiles;
-                try
-                {
-                    metadataFiles = Directory.GetFiles(checkpointDirectory, "*.json");
-                }
-                catch (Exception)
-                {
-                    return checkpoints;
-                }
-
-                foreach (string metadataFilePath in metadataFiles)
-                {
-                    try
-                    {
-                        string json = File.ReadAllText(metadataFilePath);
-                        CheckpointMetadata metadata = JsonConvert.DeserializeObject<CheckpointMetadata>(json);
-                        if (metadata != null)
-                        {
-                            // Verify the corresponding scene file still exists
-                            string sceneFilePath = Path.Combine(checkpointDirectory, $"{metadata.id}.unity");
-                            if (File.Exists(sceneFilePath))
-                            {
-                                checkpoints.Add(metadata);
-                            }
-                        }
-                    }
-                    catch (Exception exception)
-                    {
-                        Debug.LogWarning($"[CheckpointManager] Failed to read metadata file '{metadataFilePath}': {exception.Message}");
-                    }
-                }
-
-                // Sort by timestamp descending (newest first)
-                checkpoints.Sort((a, b) => b.timestamp.CompareTo(a.timestamp));
-
-                return checkpoints;
+                return ListCheckpointsInternal();
             }
         }
 
         /// <summary>
-        /// Restores a previously saved checkpoint by copying its scene file back to the original location.
+        /// Restores a previously saved checkpoint by copying its scene file and tracked assets back.
         /// </summary>
         /// <param name="checkpointId">The ID of the checkpoint to restore.</param>
         /// <returns>The metadata of the restored checkpoint, or null on failure.</returns>
@@ -303,6 +346,9 @@ namespace UnityMCP.Editor.Services
                     // Copy checkpoint scene file back to the original location
                     File.Copy(checkpointScenePath, originalFullPath, overwrite: true);
 
+                    // Restore tracked asset snapshots
+                    RestoreAssetSnapshots(metadata);
+
                     // Refresh the asset database and reopen the scene
                     AssetDatabase.Refresh();
                     EditorSceneManager.OpenScene(metadata.scenePath, OpenSceneMode.Single);
@@ -318,12 +364,12 @@ namespace UnityMCP.Editor.Services
         }
 
         /// <summary>
-        /// Compares two checkpoints by their root object names.
+        /// Compares two checkpoints by their root object names and tracked assets.
         /// If checkpointIdB is null, compares against the current scene state.
         /// </summary>
         /// <param name="checkpointIdA">First checkpoint ID, or "current" for the active scene.</param>
         /// <param name="checkpointIdB">Second checkpoint ID, or "current" for the active scene. Defaults to current scene.</param>
-        /// <returns>A diff result showing added and removed root objects, or null on failure.</returns>
+        /// <returns>A diff result showing added/removed root objects and tracked assets, or null on failure.</returns>
         public static CheckpointDiff GetDiff(string checkpointIdA, string checkpointIdB = null)
         {
             lock (_lock)
@@ -332,6 +378,7 @@ namespace UnityMCP.Editor.Services
                 List<string> rootNamesA;
                 int totalCountA;
                 int rootCountA;
+                List<string> trackedAssetsA;
 
                 if (string.Equals(checkpointIdA, "current", StringComparison.OrdinalIgnoreCase))
                 {
@@ -339,6 +386,7 @@ namespace UnityMCP.Editor.Services
                     rootNamesA = currentInfo.rootNames;
                     rootCountA = currentInfo.rootCount;
                     totalCountA = currentInfo.totalCount;
+                    trackedAssetsA = new List<string>();
                 }
                 else
                 {
@@ -351,12 +399,14 @@ namespace UnityMCP.Editor.Services
                     rootNamesA = metadataA.rootObjectNames ?? new List<string>();
                     rootCountA = metadataA.rootObjectCount;
                     totalCountA = metadataA.totalObjectCount;
+                    trackedAssetsA = metadataA.trackedAssetPaths ?? new List<string>();
                 }
 
                 // Resolve checkpoint B root object names (default to current scene)
                 List<string> rootNamesB;
                 int totalCountB;
                 int rootCountB;
+                List<string> trackedAssetsB;
 
                 bool useCurrentForB = string.IsNullOrEmpty(checkpointIdB) ||
                                       string.Equals(checkpointIdB, "current", StringComparison.OrdinalIgnoreCase);
@@ -367,6 +417,7 @@ namespace UnityMCP.Editor.Services
                     rootNamesB = currentInfo.rootNames;
                     rootCountB = currentInfo.rootCount;
                     totalCountB = currentInfo.totalCount;
+                    trackedAssetsB = new List<string>();
                 }
                 else
                 {
@@ -379,6 +430,7 @@ namespace UnityMCP.Editor.Services
                     rootNamesB = metadataB.rootObjectNames ?? new List<string>();
                     rootCountB = metadataB.rootObjectCount;
                     totalCountB = metadataB.totalObjectCount;
+                    trackedAssetsB = metadataB.trackedAssetPaths ?? new List<string>();
                 }
 
                 // Compute diff using count-aware comparison (handles duplicate names)
@@ -417,33 +469,15 @@ namespace UnityMCP.Editor.Services
                     rootCountA = rootCountA,
                     rootCountB = rootCountB,
                     totalCountA = totalCountA,
-                    totalCountB = totalCountB
+                    totalCountB = totalCountB,
+                    trackedAssetsA = trackedAssetsA,
+                    trackedAssetsB = trackedAssetsB
                 };
             }
         }
 
         /// <summary>
-        /// Builds a dictionary of name occurrence counts from a list of names.
-        /// </summary>
-        private static Dictionary<string, int> BuildNameCounts(List<string> names)
-        {
-            var counts = new Dictionary<string, int>();
-            foreach (string name in names)
-            {
-                if (counts.ContainsKey(name))
-                {
-                    counts[name]++;
-                }
-                else
-                {
-                    counts[name] = 1;
-                }
-            }
-            return counts;
-        }
-
-        /// <summary>
-        /// Deletes a checkpoint and its associated files.
+        /// Deletes a checkpoint and all its associated files (scene copy, metadata, asset snapshots).
         /// </summary>
         /// <param name="checkpointId">The ID of the checkpoint to delete.</param>
         /// <returns>True if the checkpoint was deleted, false if not found or failed.</returns>
@@ -453,12 +487,330 @@ namespace UnityMCP.Editor.Services
             {
                 string checkpointScenePath = Path.Combine(CheckpointDirectory, $"{checkpointId}.unity");
                 string checkpointMetadataPath = Path.Combine(CheckpointDirectory, $"{checkpointId}.json");
+                string assetSnapshotDirectory = Path.Combine(CheckpointDirectory, $"{checkpointId}_assets");
 
                 bool sceneDeleted = TryDeleteFile(checkpointScenePath);
                 bool metadataDeleted = TryDeleteFile(checkpointMetadataPath);
+                bool assetsDeleted = TryDeleteDirectory(assetSnapshotDirectory);
 
-                return sceneDeleted || metadataDeleted;
+                return sceneDeleted || metadataDeleted || assetsDeleted;
             }
+        }
+
+        #endregion
+
+        #region Bucket Operations
+
+        /// <summary>
+        /// Finds the active (non-frozen) bucket from existing checkpoints.
+        /// Returns null if no active bucket exists. Caller must hold _lock.
+        /// </summary>
+        private static CheckpointMetadata FindActiveBucket()
+        {
+            List<CheckpointMetadata> checkpoints = ListCheckpointsInternal();
+            foreach (CheckpointMetadata checkpoint in checkpoints)
+            {
+                if (!checkpoint.isFrozen)
+                {
+                    return checkpoint;
+                }
+            }
+            return null;
+        }
+
+        /// <summary>
+        /// Freezes a bucket by setting isFrozen to true and writing updated metadata.
+        /// Caller must hold _lock.
+        /// </summary>
+        private static void FreezeBucket(CheckpointMetadata bucket)
+        {
+            bucket.isFrozen = true;
+            WriteMetadata(bucket);
+        }
+
+        /// <summary>
+        /// Merges new changes into an existing active (non-frozen) bucket.
+        /// Re-copies the scene file and merges tracked assets.
+        /// Caller must hold _lock.
+        /// </summary>
+        private static CheckpointMetadata MergeIntoActiveBucket(
+            CheckpointMetadata activeBucket,
+            Scene activeScene,
+            string fullScenePath,
+            HashSet<string> newTrackedPaths)
+        {
+            string checkpointScenePath = Path.Combine(CheckpointDirectory, $"{activeBucket.id}.unity");
+
+            try
+            {
+                // Re-copy the scene file over the existing bucket's scene copy
+                File.Copy(fullScenePath, checkpointScenePath, overwrite: true);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[CheckpointManager] Failed to update scene file for bucket '{activeBucket.id}': {exception.Message}");
+                return null;
+            }
+
+            // Merge new tracked paths into the bucket's existing tracked asset paths
+            var existingTrackedPaths = new HashSet<string>(activeBucket.trackedAssetPaths ?? new List<string>());
+            existingTrackedPaths.UnionWith(newTrackedPaths);
+            activeBucket.trackedAssetPaths = existingTrackedPaths.ToList();
+
+            // Re-copy all tracked asset files to the bucket's asset snapshot directory
+            SaveAssetSnapshots(activeBucket.id, existingTrackedPaths);
+
+            // Update scene root info
+            GameObject[] rootObjects = activeScene.GetRootGameObjects();
+            activeBucket.rootObjectNames = rootObjects
+                .Where(go => go != null)
+                .Select(go => go.name)
+                .ToList();
+            activeBucket.rootObjectCount = rootObjects.Length;
+
+            int totalObjectCount = 0;
+            foreach (GameObject rootObject in rootObjects)
+            {
+                if (rootObject != null)
+                {
+                    totalObjectCount += rootObject.GetComponentsInChildren<Transform>(includeInactive: true).Length;
+                }
+            }
+            activeBucket.totalObjectCount = totalObjectCount;
+
+            // Update timestamp
+            activeBucket.timestamp = DateTime.UtcNow;
+
+            // Write updated metadata
+            WriteMetadata(activeBucket);
+
+            return activeBucket;
+        }
+
+        /// <summary>
+        /// Creates a new checkpoint bucket with a fresh ID, scene copy, and asset snapshots.
+        /// Caller must hold _lock.
+        /// </summary>
+        private static CheckpointMetadata CreateNewBucket(
+            string checkpointName,
+            Scene activeScene,
+            string fullScenePath,
+            HashSet<string> trackedPaths)
+        {
+            // Generate checkpoint ID and paths
+            string checkpointId = Guid.NewGuid().ToString("N").Substring(0, 12);
+            string checkpointScenePath = Path.Combine(CheckpointDirectory, $"{checkpointId}.unity");
+
+            // Copy scene file to checkpoint location
+            try
+            {
+                File.Copy(fullScenePath, checkpointScenePath, overwrite: true);
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[CheckpointManager] Failed to copy scene file: {exception.Message}");
+                return null;
+            }
+
+            // Copy tracked asset snapshots
+            SaveAssetSnapshots(checkpointId, trackedPaths);
+
+            // Gather root object information for diff support
+            GameObject[] rootObjects = activeScene.GetRootGameObjects();
+            List<string> rootObjectNames = rootObjects
+                .Where(go => go != null)
+                .Select(go => go.name)
+                .ToList();
+
+            int totalObjectCount = 0;
+            foreach (GameObject rootObject in rootObjects)
+            {
+                if (rootObject != null)
+                {
+                    totalObjectCount += rootObject.GetComponentsInChildren<Transform>(includeInactive: true).Length;
+                }
+            }
+
+            // Build metadata
+            CheckpointMetadata metadata = new CheckpointMetadata
+            {
+                id = checkpointId,
+                name = checkpointName ?? $"Checkpoint {DateTime.Now:HH:mm:ss}",
+                timestamp = DateTime.UtcNow,
+                sceneName = activeScene.name,
+                scenePath = activeScene.path,
+                rootObjectCount = rootObjects.Length,
+                totalObjectCount = totalObjectCount,
+                rootObjectNames = rootObjectNames,
+                trackedAssetPaths = trackedPaths.ToList(),
+                isFrozen = false
+            };
+
+            // Write metadata JSON
+            if (!WriteMetadata(metadata))
+            {
+                // Clean up the scene file since metadata write failed
+                TryDeleteFile(checkpointScenePath);
+                TryDeleteDirectory(Path.Combine(CheckpointDirectory, $"{checkpointId}_assets"));
+                return null;
+            }
+
+            return metadata;
+        }
+
+        #endregion
+
+        #region Asset Snapshot Storage
+
+        /// <summary>
+        /// Copies tracked asset files into the bucket's asset snapshot directory.
+        /// Asset filenames use path separators replaced with underscores.
+        /// Caller must hold _lock.
+        /// </summary>
+        /// <param name="checkpointId">The bucket ID to save snapshots for.</param>
+        /// <param name="trackedPaths">Asset paths relative to the project root (e.g., "Assets/Materials/Foo.mat").</param>
+        private static void SaveAssetSnapshots(string checkpointId, IEnumerable<string> trackedPaths)
+        {
+            if (trackedPaths == null) return;
+
+            string assetSnapshotDirectory = Path.Combine(CheckpointDirectory, $"{checkpointId}_assets");
+            string projectRoot = Path.GetDirectoryName(Application.dataPath);
+
+            // Collect paths first to check if any exist
+            var pathsList = trackedPaths.ToList();
+            if (pathsList.Count == 0) return;
+
+            // Ensure the asset snapshot directory exists
+            if (!Directory.Exists(assetSnapshotDirectory))
+            {
+                Directory.CreateDirectory(assetSnapshotDirectory);
+            }
+
+            foreach (string assetPath in pathsList)
+            {
+                if (string.IsNullOrEmpty(assetPath)) continue;
+
+                string fullAssetPath = Path.Combine(projectRoot, assetPath);
+                if (!File.Exists(fullAssetPath))
+                {
+                    Debug.LogWarning($"[CheckpointManager] Tracked asset not found on disk: {assetPath}");
+                    continue;
+                }
+
+                string sanitizedFilename = SanitizeAssetPathToFilename(assetPath);
+                string destinationPath = Path.Combine(assetSnapshotDirectory, sanitizedFilename);
+
+                try
+                {
+                    File.Copy(fullAssetPath, destinationPath, overwrite: true);
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"[CheckpointManager] Failed to snapshot asset '{assetPath}': {exception.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Restores tracked asset files from a bucket's asset snapshot directory back to the project.
+        /// Caller must hold _lock.
+        /// </summary>
+        /// <param name="metadata">The checkpoint metadata containing tracked asset paths.</param>
+        private static void RestoreAssetSnapshots(CheckpointMetadata metadata)
+        {
+            if (metadata.trackedAssetPaths == null || metadata.trackedAssetPaths.Count == 0) return;
+
+            string assetSnapshotDirectory = Path.Combine(CheckpointDirectory, $"{metadata.id}_assets");
+            if (!Directory.Exists(assetSnapshotDirectory)) return;
+
+            string projectRoot = Path.GetDirectoryName(Application.dataPath);
+
+            foreach (string assetPath in metadata.trackedAssetPaths)
+            {
+                if (string.IsNullOrEmpty(assetPath)) continue;
+
+                string sanitizedFilename = SanitizeAssetPathToFilename(assetPath);
+                string snapshotFilePath = Path.Combine(assetSnapshotDirectory, sanitizedFilename);
+
+                if (!File.Exists(snapshotFilePath))
+                {
+                    Debug.LogWarning($"[CheckpointManager] Asset snapshot not found: {sanitizedFilename}");
+                    continue;
+                }
+
+                string fullAssetPath = Path.Combine(projectRoot, assetPath);
+
+                try
+                {
+                    // Ensure the target directory exists
+                    string targetDirectory = Path.GetDirectoryName(fullAssetPath);
+                    if (!string.IsNullOrEmpty(targetDirectory) && !Directory.Exists(targetDirectory))
+                    {
+                        Directory.CreateDirectory(targetDirectory);
+                    }
+
+                    File.Copy(snapshotFilePath, fullAssetPath, overwrite: true);
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"[CheckpointManager] Failed to restore asset '{assetPath}': {exception.Message}");
+                }
+            }
+        }
+
+        /// <summary>
+        /// Converts an asset path to a safe filename by replacing path separators with underscores.
+        /// E.g., "Assets/Materials/Foo.mat" becomes "Assets_Materials_Foo.mat".
+        /// </summary>
+        private static string SanitizeAssetPathToFilename(string assetPath)
+        {
+            return assetPath.Replace('/', '_').Replace('\\', '_');
+        }
+
+        #endregion
+
+        #region Dirty Asset Detection
+
+        /// <summary>
+        /// Finds dirty assets in the Assets/ folder with tracked extensions (.prefab, .asset, .mat).
+        /// Uses AssetDatabase.FindAssets to locate candidates, then checks EditorUtility.IsDirty.
+        /// </summary>
+        private static HashSet<string> FindDirtyTrackedAssets()
+        {
+            var dirtyPaths = new HashSet<string>();
+
+            foreach (string extension in TrackedAssetExtensions)
+            {
+                // Build search filter based on extension type
+                string typeFilter = extension switch
+                {
+                    ".prefab" => "t:Prefab",
+                    ".asset" => "t:ScriptableObject",
+                    ".mat" => "t:Material",
+                    _ => null
+                };
+
+                if (typeFilter == null) continue;
+
+                string[] guids = AssetDatabase.FindAssets(typeFilter, new[] { "Assets" });
+                foreach (string guid in guids)
+                {
+                    string assetPath = AssetDatabase.GUIDToAssetPath(guid);
+                    if (string.IsNullOrEmpty(assetPath)) continue;
+
+                    // Verify the extension matches (FindAssets type filter may return related types)
+                    if (!assetPath.EndsWith(extension, StringComparison.OrdinalIgnoreCase)) continue;
+
+                    // Check if the asset is dirty without forcing a full load
+                    UnityEngine.Object loadedAsset = AssetDatabase.LoadMainAssetAtPath(assetPath);
+                    if (loadedAsset != null && EditorUtility.IsDirty(loadedAsset))
+                    {
+                        dirtyPaths.Add(assetPath);
+                    }
+                }
+            }
+
+            return dirtyPaths;
         }
 
         #endregion
@@ -467,6 +819,7 @@ namespace UnityMCP.Editor.Services
 
         /// <summary>
         /// Reads a checkpoint metadata file by ID.
+        /// Caller must hold _lock or be called from within a locked context.
         /// </summary>
         private static CheckpointMetadata GetCheckpointMetadata(string checkpointId)
         {
@@ -518,23 +871,96 @@ namespace UnityMCP.Editor.Services
         }
 
         /// <summary>
-        /// Enforces the maximum checkpoint limit by deleting the oldest checkpoints.
+        /// Builds a dictionary of name occurrence counts from a list of names.
+        /// Used for count-aware diff comparisons that handle duplicate names.
         /// </summary>
-        private static void EnforceCheckpointLimit()
+        private static Dictionary<string, int> BuildNameCounts(List<string> names)
+        {
+            var counts = new Dictionary<string, int>();
+            foreach (string objectName in names)
+            {
+                if (counts.ContainsKey(objectName))
+                {
+                    counts[objectName]++;
+                }
+                else
+                {
+                    counts[objectName] = 1;
+                }
+            }
+            return counts;
+        }
+
+        /// <summary>
+        /// Writes checkpoint metadata to its JSON file.
+        /// Returns true on success, false on failure.
+        /// Caller must hold _lock.
+        /// </summary>
+        private static bool WriteMetadata(CheckpointMetadata metadata)
+        {
+            string metadataPath = Path.Combine(CheckpointDirectory, $"{metadata.id}.json");
+            try
+            {
+                string metadataJson = JsonConvert.SerializeObject(metadata, Formatting.Indented);
+                File.WriteAllText(metadataPath, metadataJson);
+                return true;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[CheckpointManager] Failed to write metadata for '{metadata.id}': {exception.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Enforces retention limits: age-based expiry and count-based FIFO eviction.
+        /// Never evicts the active (non-frozen) bucket.
+        /// Caller must hold _lock.
+        /// </summary>
+        private static void EnforceRetentionLimits()
         {
             List<CheckpointMetadata> checkpoints = ListCheckpointsInternal();
+            DateTime utcNow = DateTime.UtcNow;
 
-            while (checkpoints.Count > MaxCheckpoints)
+            // Age-based: delete frozen buckets older than MaxBucketAge
+            for (int i = checkpoints.Count - 1; i >= 0; i--)
             {
-                // Remove the oldest checkpoint (last in the desc-sorted list)
-                CheckpointMetadata oldestCheckpoint = checkpoints[checkpoints.Count - 1];
-                DeleteCheckpointFiles(oldestCheckpoint.id);
-                checkpoints.RemoveAt(checkpoints.Count - 1);
+                CheckpointMetadata checkpoint = checkpoints[i];
+                if (checkpoint.isFrozen && (utcNow - checkpoint.timestamp) > MaxBucketAge)
+                {
+                    DeleteCheckpointFiles(checkpoint.id);
+                    checkpoints.RemoveAt(i);
+                }
+            }
+
+            // Count-based FIFO: delete oldest frozen buckets until under cap
+            while (checkpoints.Count > MaxBuckets)
+            {
+                // Find the oldest frozen bucket (list is sorted newest-first, so search from the end)
+                int oldestFrozenIndex = -1;
+                for (int i = checkpoints.Count - 1; i >= 0; i--)
+                {
+                    if (checkpoints[i].isFrozen)
+                    {
+                        oldestFrozenIndex = i;
+                        break;
+                    }
+                }
+
+                if (oldestFrozenIndex < 0)
+                {
+                    // No frozen buckets left to evict
+                    break;
+                }
+
+                DeleteCheckpointFiles(checkpoints[oldestFrozenIndex].id);
+                checkpoints.RemoveAt(oldestFrozenIndex);
             }
         }
 
         /// <summary>
         /// Internal version of ListCheckpoints that does not acquire the lock (caller must hold it).
+        /// Returns checkpoints sorted by timestamp descending (newest first).
         /// </summary>
         private static List<CheckpointMetadata> ListCheckpointsInternal()
         {
@@ -579,15 +1005,17 @@ namespace UnityMCP.Editor.Services
         }
 
         /// <summary>
-        /// Deletes checkpoint files without acquiring the lock (caller must hold it).
+        /// Deletes checkpoint files and asset snapshot directory without acquiring the lock (caller must hold it).
         /// </summary>
         private static void DeleteCheckpointFiles(string checkpointId)
         {
             string checkpointScenePath = Path.Combine(CheckpointDirectory, $"{checkpointId}.unity");
             string checkpointMetadataPath = Path.Combine(CheckpointDirectory, $"{checkpointId}.json");
+            string assetSnapshotDirectory = Path.Combine(CheckpointDirectory, $"{checkpointId}_assets");
 
             TryDeleteFile(checkpointScenePath);
             TryDeleteFile(checkpointMetadataPath);
+            TryDeleteDirectory(assetSnapshotDirectory);
         }
 
         /// <summary>
@@ -607,6 +1035,28 @@ namespace UnityMCP.Editor.Services
             catch (Exception exception)
             {
                 Debug.LogWarning($"[CheckpointManager] Failed to delete file '{filePath}': {exception.Message}");
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Attempts to recursively delete a directory and all its contents.
+        /// Returns true if successfully deleted, false otherwise.
+        /// </summary>
+        private static bool TryDeleteDirectory(string directoryPath)
+        {
+            try
+            {
+                if (Directory.Exists(directoryPath))
+                {
+                    Directory.Delete(directoryPath, recursive: true);
+                    return true;
+                }
+                return false;
+            }
+            catch (Exception exception)
+            {
+                Debug.LogWarning($"[CheckpointManager] Failed to delete directory '{directoryPath}': {exception.Message}");
                 return false;
             }
         }
