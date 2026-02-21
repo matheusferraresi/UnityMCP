@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using UnityEngine.UIElements;
@@ -6,7 +7,7 @@ using UnityMCP.Editor.Core;
 namespace UnityMCP.Editor.UI.Tabs
 {
     /// <summary>
-    /// Tools tab: searchable, categorized catalog of registered MCP tools.
+    /// Registry tab: searchable catalog of registered MCP tools, resources, and prompts.
     /// </summary>
     public class ToolsTab : ITab
     {
@@ -55,7 +56,7 @@ namespace UnityMCP.Editor.UI.Tabs
 
             // Set placeholder text
             _searchField.value = "";
-            SetPlaceholder(_searchField, "Filter tools...");
+            SetPlaceholder(_searchField, "Filter registry...");
 
             // Tool list scroll view
             _toolListScrollView = new ScrollView(ScrollViewMode.Vertical);
@@ -67,7 +68,7 @@ namespace UnityMCP.Editor.UI.Tabs
             // Empty state
             _emptyState = new VisualElement();
             _emptyState.AddToClassList("empty-state");
-            Label emptyLabel = new Label("No tools registered.\nCreate tools by adding [MCPTool] attribute to static methods.");
+            Label emptyLabel = new Label("No items registered.\nCreate tools with [MCPTool], resources with [MCPResource], or prompts with [MCPPrompt].");
             emptyLabel.AddToClassList("empty-state-text");
             _emptyState.Add(emptyLabel);
         }
@@ -92,9 +93,10 @@ namespace UnityMCP.Editor.UI.Tabs
         private void RefreshCache()
         {
             _cachedToolsByCategory = ToolRegistry.GetDefinitionsByCategory().ToList();
-            int categoryCount = _cachedToolsByCategory.Count;
             int toolCount = ToolRegistry.Count;
-            _summaryLabel.text = $"{toolCount} tools across {categoryCount} categories";
+            int resourceCount = ResourceRegistry.Count;
+            int promptCount = PromptRegistry.Count;
+            _summaryLabel.text = $"{toolCount} tools, {resourceCount} resources, {promptCount} prompts";
         }
 
         #region Tool List Building
@@ -145,7 +147,11 @@ namespace UnityMCP.Editor.UI.Tabs
                 _toolListContainer.Add(categoryFoldout);
             }
 
-            if (!hasVisibleTools)
+            if (!hasVisibleTools && !hasFilter)
+            {
+                _toolListScrollView.Add(_emptyState);
+            }
+            else if (!hasVisibleTools)
             {
                 VisualElement noResults = new VisualElement();
                 noResults.AddToClassList("empty-state");
@@ -154,6 +160,12 @@ namespace UnityMCP.Editor.UI.Tabs
                 noResults.Add(noResultsLabel);
                 _toolListContainer.Add(noResults);
             }
+
+            // --- Resources Section ---
+            BuildResourcesSection(filterLower);
+
+            // --- Prompts Section ---
+            BuildPromptsSection(filterLower);
         }
 
         private VisualElement BuildToolEntry(ToolDefinition tool)
@@ -221,6 +233,190 @@ namespace UnityMCP.Editor.UI.Tabs
             pill.AddToClassList("pill");
             pill.AddToClassList(styleClass);
             return pill;
+        }
+
+        #endregion
+
+        #region Resources Section
+
+        private void BuildResourcesSection(string filterLower)
+        {
+            List<ResourceDefinition> resources = ResourceRegistry.GetDefinitions().ToList();
+            List<ResourceTemplate> templates = ResourceRegistry.GetTemplateDefinitions().ToList();
+
+            bool hasFilter = !string.IsNullOrEmpty(filterLower);
+
+            // Filter resources
+            if (hasFilter)
+            {
+                resources = resources.Where(r =>
+                    (r.name != null && r.name.ToLowerInvariant().Contains(filterLower)) ||
+                    (r.uri != null && r.uri.ToLowerInvariant().Contains(filterLower)) ||
+                    (r.description != null && r.description.ToLowerInvariant().Contains(filterLower))
+                ).ToList();
+
+                templates = templates.Where(t =>
+                    (t.name != null && t.name.ToLowerInvariant().Contains(filterLower)) ||
+                    (t.uriTemplate != null && t.uriTemplate.ToLowerInvariant().Contains(filterLower)) ||
+                    (t.description != null && t.description.ToLowerInvariant().Contains(filterLower))
+                ).ToList();
+            }
+
+            int totalCount = resources.Count + templates.Count;
+            if (totalCount == 0 && hasFilter) return;
+            if (resources.Count == 0 && templates.Count == 0) return;
+
+            Foldout resourcesFoldout = new Foldout { text = $"Resources ({totalCount})" };
+            resourcesFoldout.AddToClassList("category-foldout");
+            resourcesFoldout.value = hasFilter;
+
+            foreach (ResourceDefinition resource in resources)
+            {
+                resourcesFoldout.Add(BuildResourceEntry(resource));
+            }
+
+            foreach (ResourceTemplate template in templates)
+            {
+                resourcesFoldout.Add(BuildResourceTemplateEntry(template));
+            }
+
+            _toolListContainer.Add(resourcesFoldout);
+        }
+
+        private static VisualElement BuildResourceEntry(ResourceDefinition resource)
+        {
+            VisualElement entry = new VisualElement();
+            entry.AddToClassList("tool-entry");
+
+            Label nameLabel = new Label(resource.name ?? resource.uri);
+            nameLabel.AddToClassList("tool-name");
+            nameLabel.AddToClassList("mono");
+            entry.Add(nameLabel);
+
+            if (!string.IsNullOrEmpty(resource.uri))
+            {
+                Label uriLabel = new Label(resource.uri);
+                uriLabel.AddToClassList("tool-params");
+                entry.Add(uriLabel);
+            }
+
+            if (!string.IsNullOrEmpty(resource.description))
+            {
+                Label descLabel = new Label(resource.description);
+                descLabel.AddToClassList("tool-description");
+                entry.Add(descLabel);
+            }
+
+            if (!string.IsNullOrEmpty(resource.mimeType))
+            {
+                VisualElement pillRow = new VisualElement();
+                pillRow.AddToClassList("tool-annotations");
+                pillRow.Add(CreateAnnotationPill(resource.mimeType, "pill--readonly"));
+                entry.Add(pillRow);
+            }
+
+            return entry;
+        }
+
+        private static VisualElement BuildResourceTemplateEntry(ResourceTemplate template)
+        {
+            VisualElement entry = new VisualElement();
+            entry.AddToClassList("tool-entry");
+
+            Label nameLabel = new Label(template.name ?? template.uriTemplate);
+            nameLabel.AddToClassList("tool-name");
+            nameLabel.AddToClassList("mono");
+            entry.Add(nameLabel);
+
+            if (!string.IsNullOrEmpty(template.uriTemplate))
+            {
+                Label uriLabel = new Label(template.uriTemplate);
+                uriLabel.AddToClassList("tool-params");
+                entry.Add(uriLabel);
+            }
+
+            if (!string.IsNullOrEmpty(template.description))
+            {
+                Label descLabel = new Label(template.description);
+                descLabel.AddToClassList("tool-description");
+                entry.Add(descLabel);
+            }
+
+            VisualElement pillRow = new VisualElement();
+            pillRow.AddToClassList("tool-annotations");
+            pillRow.Add(CreateAnnotationPill("template", "pill--idempotent"));
+            if (!string.IsNullOrEmpty(template.mimeType))
+            {
+                pillRow.Add(CreateAnnotationPill(template.mimeType, "pill--readonly"));
+            }
+            entry.Add(pillRow);
+
+            return entry;
+        }
+
+        #endregion
+
+        #region Prompts Section
+
+        private void BuildPromptsSection(string filterLower)
+        {
+            List<PromptDefinition> prompts = PromptRegistry.GetDefinitions().ToList();
+
+            bool hasFilter = !string.IsNullOrEmpty(filterLower);
+
+            if (hasFilter)
+            {
+                prompts = prompts.Where(p =>
+                    (p.name != null && p.name.ToLowerInvariant().Contains(filterLower)) ||
+                    (p.description != null && p.description.ToLowerInvariant().Contains(filterLower))
+                ).ToList();
+            }
+
+            if (prompts.Count == 0) return;
+
+            Foldout promptsFoldout = new Foldout { text = $"Prompts ({prompts.Count})" };
+            promptsFoldout.AddToClassList("category-foldout");
+            promptsFoldout.value = hasFilter;
+
+            foreach (PromptDefinition prompt in prompts)
+            {
+                promptsFoldout.Add(BuildPromptEntry(prompt));
+            }
+
+            _toolListContainer.Add(promptsFoldout);
+        }
+
+        private static VisualElement BuildPromptEntry(PromptDefinition prompt)
+        {
+            VisualElement entry = new VisualElement();
+            entry.AddToClassList("tool-entry");
+
+            Label nameLabel = new Label(prompt.name);
+            nameLabel.AddToClassList("tool-name");
+            nameLabel.AddToClassList("mono");
+            entry.Add(nameLabel);
+
+            if (!string.IsNullOrEmpty(prompt.description))
+            {
+                Label descLabel = new Label(prompt.description);
+                descLabel.AddToClassList("tool-description");
+                entry.Add(descLabel);
+            }
+
+            if (prompt.arguments != null && prompt.arguments.Count > 0)
+            {
+                int totalArgs = prompt.arguments.Count;
+                int requiredArgs = prompt.arguments.Count(a => a.required);
+                string argText = requiredArgs > 0
+                    ? $"{totalArgs} args ({requiredArgs} required)"
+                    : $"{totalArgs} args";
+
+                Label argLabel = new Label(argText);
+                argLabel.AddToClassList("tool-params");
+                entry.Add(argLabel);
+            }
+
+            return entry;
         }
 
         #endregion

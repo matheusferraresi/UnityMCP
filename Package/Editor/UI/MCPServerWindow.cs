@@ -14,7 +14,7 @@ namespace UnityMCP.Editor.UI
     /// </summary>
     public class MCPServerWindow : EditorWindow
     {
-        private const string DocumentationUrl = "https://github.com/anthropics/anthropic-cookbook/tree/main/misc/model_context_protocol";
+        private const string DocumentationUrl = "https://github.com/Bluepuff71/UnityMCP";
         private const string VerboseLoggingPrefKey = "UnityMCP_VerboseLogging";
         private const string ActiveTabPrefKey = "UnityMCP_ActiveTab";
 
@@ -225,7 +225,7 @@ namespace UnityMCP.Editor.UI
             VisualElement tabBar = new VisualElement();
             tabBar.AddToClassList("tab-bar");
 
-            string[] tabNames = { "Status", "Activity", "Tools", "Checkpoints", "Recipes" };
+            string[] tabNames = { "Status", "Activity", "Registry", "Checkpoints", "Recipes" };
 
             for (int i = 0; i < tabNames.Length; i++)
             {

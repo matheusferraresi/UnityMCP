@@ -21,6 +21,7 @@ namespace UnityMCP.Editor.UI.Tabs
         private readonly Label _toolCountLabel;
         private readonly Label _resourceCountLabel;
         private readonly Label _promptCountLabel;
+        private readonly Label _recipeCountLabel;
 
         // Configuration elements
         private readonly IntegerField _portField;
@@ -88,10 +89,12 @@ namespace UnityMCP.Editor.UI.Tabs
             _toolCountLabel = CreateStatPill("0 Tools");
             _resourceCountLabel = CreateStatPill("0 Resources");
             _promptCountLabel = CreateStatPill("0 Prompts");
+            _recipeCountLabel = CreateStatPill("0 Recipes");
 
             statRow.Add(_toolCountLabel);
             statRow.Add(_resourceCountLabel);
             statRow.Add(_promptCountLabel);
+            statRow.Add(_recipeCountLabel);
             _connectionCard.Add(statRow);
 
             scrollView.Add(_connectionCard);
@@ -186,6 +189,7 @@ namespace UnityMCP.Editor.UI.Tabs
             _toolCountLabel.text = $"{ToolRegistry.Count} Tools";
             _resourceCountLabel.text = $"{ResourceRegistry.Count} Resources";
             _promptCountLabel.text = $"{PromptRegistry.Count} Prompts";
+            _recipeCountLabel.text = $"{RecipeRegistry.Count} Recipes";
 
             // Port field state
             _portField.SetEnabled(!isRunning);
