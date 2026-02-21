@@ -5,6 +5,7 @@ using System.Reflection;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
+using UnityMCP.Editor;
 
 namespace UnityMCP.Editor.Core
 {
@@ -214,7 +215,7 @@ namespace UnityMCP.Editor.Core
     /// <summary>
     /// Internal class holding metadata and invocation logic for a discovered recipe.
     /// </summary>
-    internal class RecipeInfo
+    public class RecipeInfo
     {
         private readonly MCPRecipeAttribute _attribute;
         private readonly MethodInfo _method;
@@ -455,7 +456,7 @@ namespace UnityMCP.Editor.Core
     /// <summary>
     /// Internal metadata for a recipe parameter.
     /// </summary>
-    internal class RecipeParameterMetadata
+    public class RecipeParameterMetadata
     {
         public string Name { get; set; }
         public string Description { get; set; }

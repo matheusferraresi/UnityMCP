@@ -1,3 +1,4 @@
+using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
 
 namespace UnityMCP.Editor.Resources.UI
