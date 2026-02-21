@@ -20,13 +20,14 @@ namespace UnityMCP.Editor.Tools
         [MCPTool("scene_checkpoint", "Save or list scene checkpoints for undo/restore capability", Category = "Scene", DestructiveHint = true)]
         public static object Checkpoint(
             [MCPParam("action", "Action: 'save' to create checkpoint, 'list' to view all checkpoints", required: true, Enum = new[] { "save", "list" })] string action,
-            [MCPParam("name", "Optional name for the checkpoint (save only)")] string name = null)
+            [MCPParam("name", "Optional name for the checkpoint (save only)")] string name = null,
+            [MCPParam("new_bucket", "Start a new checkpoint bucket (true) or fold into current (false)")] bool newBucket = true)
         {
             string normalizedAction = (action ?? "").ToLowerInvariant().Trim();
 
             return normalizedAction switch
             {
-                "save" => SaveCheckpoint(name),
+                "save" => SaveCheckpoint(name, newBucket),
                 "list" => ListCheckpoints(),
                 _ => throw MCPException.InvalidParams($"Unknown action: '{action}'. Valid actions: save, list")
             };
@@ -35,11 +36,11 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Saves the current scene state as a checkpoint.
         /// </summary>
-        private static object SaveCheckpoint(string checkpointName)
+        private static object SaveCheckpoint(string checkpointName, bool newBucket)
         {
             try
             {
-                CheckpointMetadata metadata = CheckpointManager.SaveCheckpoint(checkpointName);
+                CheckpointMetadata metadata = CheckpointManager.SaveCheckpoint(checkpointName, newBucket);
                 if (metadata == null)
                 {
                     return new
@@ -113,7 +114,7 @@ namespace UnityMCP.Editor.Tools
             {
                 // Get the current scene state for diff comparison
                 string beforeSnapshotId = null;
-                CheckpointMetadata beforeMetadata = CheckpointManager.SaveCheckpoint("Before restore (auto)");
+                CheckpointMetadata beforeMetadata = CheckpointManager.SaveCheckpoint("Before restore (auto)", newBucket: true);
                 if (beforeMetadata != null)
                 {
                     beforeSnapshotId = beforeMetadata.id;

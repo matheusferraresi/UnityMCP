@@ -125,6 +125,12 @@ namespace UnityMCP.Editor.Tools
                 // Determine resulting state
                 string resultingState = GetCurrentUnityState();
 
+                // Auto-checkpoint: fold tracked asset changes into current bucket
+                if (CheckpointManager.HasPendingTracks)
+                {
+                    CheckpointManager.SaveCheckpoint();
+                }
+
                 // Build success message
                 string message;
                 if (refreshTriggered && compileRequested)

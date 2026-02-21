@@ -8,6 +8,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 using UnityMCP.Editor.Utilities;
 
 #pragma warning disable CS0618 // EditorUtility.InstanceIDToObject is deprecated but still functional
@@ -297,6 +298,13 @@ namespace UnityMCP.Editor.Tools
                 if (saved)
                 {
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+
+                    // Auto-checkpoint: fold tracked asset changes into current bucket
+                    if (CheckpointManager.HasPendingTracks)
+                    {
+                        CheckpointManager.SaveCheckpoint();
+                    }
+
                     return new
                     {
                         success = true,
