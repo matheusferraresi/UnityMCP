@@ -388,23 +388,123 @@
     text-overflow: ellipsis;
 }
 
-/* --- Tool Entry --- */
-.tool-entry {
-    padding: 4px 8px;
-    margin-bottom: 2px;
-    border-radius: 2px;
+/* --- Registry Section Headers --- */
+.reg-section-header {
+    flex-direction: row;
+    align-items: center;
+    padding: 6px 8px 4px 8px;
+    margin-top: 8px;
+    border-bottom-width: 1px;
+    border-bottom-color: var(--umcp-border);
 }
 
-.tool-entry:hover {
+.reg-section-header--resource {
+    border-bottom-color: rgba(46, 204, 113, 0.2);
+}
+
+.reg-section-header--prompt {
+    border-bottom-color: rgba(243, 156, 18, 0.2);
+}
+
+.reg-section-header--clickable {
+    cursor: link;
+}
+
+.reg-section-header--clickable:hover {
     background-color: rgba(255, 255, 255, 0.03);
 }
 
-.tool-name {
-    -unity-font-style: bold;
-    font-size: 11px;
+.reg-section-arrow {
+    font-size: 8px;
+    color: var(--umcp-muted);
+    min-width: 12px;
+    -unity-text-align: middle-center;
+    margin-right: 4px;
+    flex-shrink: 0;
 }
 
-.tool-description {
+.reg-section-label {
+    font-size: 10px;
+    -unity-font-style: bold;
+    letter-spacing: 1px;
+    color: var(--umcp-muted);
+}
+
+.reg-section-count {
+    font-size: 9px;
+    color: var(--umcp-muted);
+    margin-left: 6px;
+    padding: 0px 5px;
+    border-radius: 6px;
+    background-color: rgba(128, 128, 128, 0.12);
+}
+
+/* --- Registry Card --- */
+.reg-card {
+    padding: 5px 8px 5px 10px;
+    margin: 1px 0;
+    border-radius: 3px;
+    border-left-width: 2px;
+    border-left-color: rgba(0, 0, 0, 0);
+}
+
+.reg-card:hover {
+    background-color: rgba(255, 255, 255, 0.03);
+}
+
+.reg-card--clickable {
+    cursor: link;
+}
+
+.reg-card--clickable:hover {
+    background-color: rgba(255, 255, 255, 0.05);
+}
+
+.reg-card--expanded {
+    background-color: rgba(255, 255, 255, 0.04);
+    border-left-color: var(--umcp-accent);
+}
+
+/* Type accent borders */
+.reg-card--tool {
+    border-left-color: rgba(78, 205, 196, 0.4);
+}
+
+.reg-card--resource {
+    border-left-color: rgba(46, 204, 113, 0.4);
+}
+
+.reg-card--prompt {
+    border-left-color: rgba(243, 156, 18, 0.4);
+}
+
+.reg-card--expanded.reg-card--tool {
+    border-left-color: var(--umcp-accent);
+}
+
+.reg-card--expanded.reg-card--resource {
+    border-left-color: var(--umcp-success);
+}
+
+.reg-card--expanded.reg-card--prompt {
+    border-left-color: var(--umcp-warning);
+}
+
+/* Card header row */
+.reg-card__header {
+    flex-direction: row;
+    align-items: center;
+    flex-wrap: wrap;
+}
+
+.reg-card__name {
+    -unity-font-style: bold;
+    font-size: 11px;
+    margin-right: 6px;
+    flex-shrink: 0;
+}
+
+.reg-card__desc {
     font-size: 10px;
     color: var(--umcp-muted);
     overflow: hidden;
@@ -413,15 +513,82 @@
     margin-top: 1px;
 }
 
-.tool-params {
+.reg-card__uri {
     font-size: 10px;
     color: var(--umcp-muted);
     margin-top: 1px;
+    -unity-font-style: italic;
 }
 
-.tool-annotations {
+/* --- Registry Detail Panel --- */
+.reg-detail {
+    margin-top: 4px;
+    padding-top: 0;
+}
+
+.reg-detail__divider {
+    height: 1px;
+    background-color: var(--umcp-border);
+    margin-bottom: 4px;
+}
+
+.reg-detail__header {
+    font-size: 9px;
+    color: var(--umcp-muted);
+    letter-spacing: 1px;
+    -unity-font-style: bold;
+    margin-bottom: 4px;
+}
+
+/* Parameter rows */
+.reg-param {
+    padding: 2px 0 2px 4px;
+    margin-bottom: 2px;
+    border-left-width: 1px;
+    border-left-color: rgba(128, 128, 128, 0.15);
+    padding-left: 8px;
+}
+
+.reg-param__header {
     flex-direction: row;
-    margin-top: 2px;
+    align-items: center;
+}
+
+.reg-param__name {
+    -unity-font-style: bold;
+    font-size: 10px;
+    margin-right: 6px;
+}
+
+.reg-param__type {
+    font-size: 9px;
+    color: var(--umcp-accent);
+    padding: 0px 4px;
+    border-radius: 2px;
+    background-color: rgba(78, 205, 196, 0.08);
+    margin-right: 4px;
+}
+
+.reg-param__required {
+    font-size: 9px;
+    color: var(--umcp-warning);
+    padding: 0px 4px;
+    border-radius: 2px;
+    background-color: rgba(243, 156, 18, 0.08);
+}
+
+.reg-param__desc {
+    font-size: 10px;
+    color: var(--umcp-muted);
+    white-space: normal;
+    margin-top: 1px;
+}
+
+.reg-param__meta {
+    font-size: 9px;
+    color: rgba(128, 128, 128, 0.7);
+    margin-top: 1px;
+    -unity-font-style: italic;
 }
 
 /* --- Checkpoint Entry --- */
