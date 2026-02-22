@@ -60,7 +60,9 @@ namespace UnityMCP.Editor.Tools
                     };
                 }
 
-                if (!activeScene.isDirty && !CheckpointManager.HasPendingTracks)
+                CheckpointMetadata metadata = CheckpointManager.SaveCheckpoint(checkpointName, newBucket);
+
+                if (metadata == CheckpointManager.NothingToSave)
                 {
                     return new
                     {
@@ -69,7 +71,6 @@ namespace UnityMCP.Editor.Tools
                     };
                 }
 
-                CheckpointMetadata metadata = CheckpointManager.SaveCheckpoint(checkpointName, newBucket);
                 if (metadata == null)
                 {
                     return new

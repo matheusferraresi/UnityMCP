@@ -130,6 +130,17 @@ namespace UnityMCP.Editor.Services
     /// </summary>
     public static class CheckpointManager
     {
+        #region Sentinels
+
+        /// <summary>
+        /// Sentinel returned by SaveCheckpoint when there is nothing to save
+        /// (no pending tracks and scene is clean). Distinguishes this from null,
+        /// which indicates an actual error.
+        /// </summary>
+        public static readonly CheckpointMetadata NothingToSave = new CheckpointMetadata();
+
+        #endregion
+
         #region Constants
 
         /// <summary>
@@ -268,8 +279,7 @@ namespace UnityMCP.Editor.Services
                 bool sceneIsDirty = activeScene.isDirty;
                 if (consumedTracks.Count == 0 && !sceneIsDirty)
                 {
-                    Debug.Log($"[CheckpointManager] SaveCheckpoint early return: no changes to save (trackedCount=0, sceneIsDirty=false, name='{name}', newBucket={newBucket})");
-                    return null;
+                    return NothingToSave;
                 }
 
                 // Step 4: Capture root info BEFORE SaveScene to avoid phantom duplicates
