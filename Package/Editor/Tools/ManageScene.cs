@@ -300,9 +300,16 @@ namespace UnityMCP.Editor.Tools
                     AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
 
                     // Auto-checkpoint: fold tracked asset changes into current bucket
-                    if (CheckpointManager.HasPendingTracks)
+                    try
                     {
-                        CheckpointManager.SaveCheckpoint();
+                        if (CheckpointManager.HasPendingTracks)
+                        {
+                            CheckpointManager.SaveCheckpoint();
+                        }
+                    }
+                    catch (Exception checkpointException)
+                    {
+                        Debug.LogWarning($"[ManageScene] Auto-checkpoint failed: {checkpointException.Message}");
                     }
 
                     return new
