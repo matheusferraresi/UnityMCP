@@ -337,6 +337,7 @@ namespace UnityMCP.Editor.Tools
 
             try
             {
+                CheckpointManager.Track(normalizedPath);
                 string renameResult = AssetDatabase.RenameAsset(normalizedPath, newName);
 
                 if (string.IsNullOrEmpty(renameResult))
@@ -488,6 +489,7 @@ namespace UnityMCP.Editor.Tools
             try
             {
                 AssetDatabase.ImportAsset(normalizedPath, ImportAssetOptions.ForceUpdate);
+                CheckpointManager.Track(normalizedPath);
 
                 return new
                 {
