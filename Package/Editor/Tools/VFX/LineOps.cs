@@ -4,6 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 
 namespace UnityMCP.Editor.Tools.VFX
 {
@@ -88,6 +89,7 @@ namespace UnityMCP.Editor.Tools.VFX
             }
 
             EditorUtility.SetDirty(gameObject);
+            CheckpointManager.Track(gameObject);
 
             return new
             {
@@ -257,6 +259,7 @@ namespace UnityMCP.Editor.Tools.VFX
             }
 
             EditorUtility.SetDirty(lineRenderer);
+            CheckpointManager.Track(lineRenderer);
 
             return new
             {

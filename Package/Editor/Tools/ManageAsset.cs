@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
@@ -178,6 +179,7 @@ namespace UnityMCP.Editor.Tools
 
             try
             {
+                CheckpointManager.Track(normalizedPath);
                 bool deleted = AssetDatabase.DeleteAsset(normalizedPath);
 
                 if (deleted)
@@ -262,6 +264,7 @@ namespace UnityMCP.Editor.Tools
 
                 if (string.IsNullOrEmpty(moveResult))
                 {
+                    CheckpointManager.Track(normalizedDestination);
                     return new
                     {
                         success = true,
@@ -431,6 +434,7 @@ namespace UnityMCP.Editor.Tools
                     // Persist the duplicated asset to disk and refresh the database
                     AssetDatabase.SaveAssets();
                     AssetDatabase.Refresh();
+                    CheckpointManager.Track(normalizedDestination);
 
                     return new
                     {
@@ -752,6 +756,7 @@ namespace UnityMCP.Editor.Tools
                 Material material = new Material(shader);
                 AssetDatabase.CreateAsset(material, path);
                 AssetDatabase.SaveAssets();
+                CheckpointManager.Track(path);
 
                 return new
                 {
@@ -818,6 +823,7 @@ namespace UnityMCP.Editor.Tools
 
                 AssetDatabase.CreateAsset(physicMaterial, path);
                 AssetDatabase.SaveAssets();
+                CheckpointManager.Track(path);
 
                 return new
                 {

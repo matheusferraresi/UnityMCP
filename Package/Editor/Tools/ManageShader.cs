@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
@@ -445,6 +446,7 @@ namespace UnityMCP.Editor.Tools
 
                 EditorUtility.SetDirty(material);
                 AssetDatabase.SaveAssets();
+                CheckpointManager.Track(material);
 
                 return new
                 {

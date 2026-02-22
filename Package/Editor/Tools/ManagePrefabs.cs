@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 using UnityMCP.Editor.Utilities;
 
 #pragma warning disable CS0618 // EditorUtility.InstanceIDToObject is deprecated but still functional
@@ -323,6 +324,8 @@ namespace UnityMCP.Editor.Tools
                     };
                 }
 
+                CheckpointManager.Track(normalizedPath);
+
                 // Mark the scene as dirty since we connected the GameObject to the prefab
                 EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
 
@@ -374,6 +377,7 @@ namespace UnityMCP.Editor.Tools
             {
                 // Save the prefab asset
                 PrefabUtility.SaveAsPrefabAsset(prefabStage.prefabContentsRoot, prefabStage.assetPath);
+                CheckpointManager.Track(prefabStage.assetPath);
                 return true;
             }
             catch (Exception exception)

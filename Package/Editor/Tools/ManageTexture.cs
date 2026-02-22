@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
@@ -547,6 +548,7 @@ namespace UnityMCP.Editor.Tools
 
                 // Save and reimport
                 textureImporter.SaveAndReimport();
+                CheckpointManager.Track(normalizedPath);
 
                 // Reload texture to get updated info
                 Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(normalizedPath);

@@ -6,6 +6,7 @@ using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
@@ -145,6 +146,7 @@ namespace UnityMCP.Editor.Tools
                 Material material = new Material(resolvedShader);
                 AssetDatabase.CreateAsset(material, normalizedPath);
                 AssetDatabase.SaveAssets();
+                CheckpointManager.Track(normalizedPath);
 
                 return new
                 {
@@ -291,6 +293,7 @@ namespace UnityMCP.Editor.Tools
 
                 EditorUtility.SetDirty(material);
                 AssetDatabase.SaveAssets();
+                CheckpointManager.Track(material);
 
                 return new
                 {
@@ -372,6 +375,7 @@ namespace UnityMCP.Editor.Tools
                 material.SetColor(actualPropertyName, color);
                 EditorUtility.SetDirty(material);
                 AssetDatabase.SaveAssets();
+                CheckpointManager.Track(material);
 
                 return new
                 {
@@ -455,6 +459,7 @@ namespace UnityMCP.Editor.Tools
             sharedMaterials[slot] = material;
             renderer.sharedMaterials = sharedMaterials;
             EditorUtility.SetDirty(renderer);
+            CheckpointManager.Track(renderer);
 
             return new
             {
@@ -619,6 +624,7 @@ namespace UnityMCP.Editor.Tools
             Undo.RecordObject(material, "Set Shared Material Color");
             material.SetColor(propertyName, color);
             EditorUtility.SetDirty(material);
+            CheckpointManager.Track(material);
 
             return new
             {
@@ -681,6 +687,7 @@ namespace UnityMCP.Editor.Tools
             Undo.RecordObject(renderer, "Set Instance Material Color");
             material.SetColor(propertyName, color);
             renderer.materials = materials;
+            CheckpointManager.Track(renderer);
 
             return new
             {
