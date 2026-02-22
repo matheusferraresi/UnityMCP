@@ -330,7 +330,23 @@ All long-running operations (build, test, profiler) follow the same pattern:
 - Use `scene_screenshot` after visual changes to confirm the result.
 - Save frequently with `scene_save` to avoid losing work.
 - Use `find_gameobjects` to locate objects by name/tag instead of hardcoding instance IDs.
-- For async operations (build, test, profiler), always use the poll pattern: start -> get_job -> check status."
+- For async operations (build, test, profiler), always use the poll pattern: start -> get_job -> check status.
+
+## Checkpoint & Asset Tracking
+- Checkpoints use a **bucket model**: an active (mutable) bucket accumulates changes until frozen.
+- `scene_checkpoint` action='save' with new_bucket=false merges into the active bucket; new_bucket=true freezes it and starts fresh.
+- All destructive tools (create, modify, delete, etc.) automatically call `CheckpointManager.Track()` to register modified assets.
+- When a checkpoint is saved, all pending tracked assets are snapshotted alongside the scene file.
+- Restoring a checkpoint restores both the scene and all tracked asset files.
+- Use `scene_diff` to compare checkpoints, including tracked asset differences.
+
+### Tool Author Convention for Track()
+When writing new tools that modify assets, add a one-liner after each mutation:
+- `CheckpointManager.Track(unityObject)` for Unity objects (materials, GameObjects, components).
+- `CheckpointManager.Track(assetPath)` for string-based asset paths.
+- Place Track() **after** the modification is complete (after SetDirty, SaveAssets, etc.).
+- For **delete** operations, Track() goes **before** the deletion (the object is destroyed after).
+- Import `using UnityMCP.Editor.Services;` to access CheckpointManager."
         };
 
         private const string OverviewContent = @"# Unity MCP Tool Guide
@@ -345,7 +361,7 @@ Call unity_guide with a topic parameter for detailed guidance on each area:
 - **debugging** - Console reading, diagnostic workflows, profiler usage, and common error fixes.
 - **building** - Build pipeline, test execution, platform targeting, and async job polling.
 - **ui** - UI Toolkit querying, Canvas setup, and EventSystem requirements.
-- **workflows** - Multi-step tool chaining recipes for common tasks.
+- **workflows** - Multi-step tool chaining recipes for common tasks, plus checkpoint and asset tracking conventions.
 
 ## Universal Conventions
 - **Coordinate System:** Left-handed Y-up. X=right, Y=up, Z=forward. 1 unit = 1 meter. Rotations in degrees.
