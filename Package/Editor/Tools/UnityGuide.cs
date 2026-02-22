@@ -341,11 +341,12 @@ All long-running operations (build, test, profiler) follow the same pattern:
 - Use `scene_diff` to compare checkpoints, including tracked asset differences.
 
 ### Tool Author Convention for Track()
-When writing new tools that modify assets, add a one-liner after each mutation:
-- `CheckpointManager.Track(unityObject)` for Unity objects (materials, GameObjects, components).
+When writing new tools that modify **project assets** (materials, scripts, prefabs, textures, ScriptableObjects), add a one-liner after each mutation:
+- `CheckpointManager.Track(unityObject)` for Unity asset objects (materials, prefabs, ScriptableObjects).
 - `CheckpointManager.Track(assetPath)` for string-based asset paths.
 - Place Track() **after** the modification is complete (after SetDirty, SaveAssets, etc.).
 - For **delete** operations, Track() goes **before** the deletion (the object is destroyed after).
+- **Do NOT** call Track() on scene GameObjects or components — they have no asset path and the call is a no-op. Scene changes are captured by the scene file copy.
 - Import `using UnityMCP.Editor.Services;` to access CheckpointManager."
         };
 

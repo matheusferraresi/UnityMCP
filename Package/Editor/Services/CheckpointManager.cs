@@ -268,6 +268,7 @@ namespace UnityMCP.Editor.Services
                 bool sceneIsDirty = activeScene.isDirty;
                 if (consumedTracks.Count == 0 && !sceneIsDirty)
                 {
+                    Debug.Log($"[CheckpointManager] SaveCheckpoint early return: no changes to save (trackedCount=0, sceneIsDirty=false, name='{name}', newBucket={newBucket})");
                     return null;
                 }
 
@@ -290,18 +291,20 @@ namespace UnityMCP.Editor.Services
                 }
                 else
                 {
-                    // Step 5: Freeze old active bucket and create a new one
-                    if (activeBucket != null)
-                    {
-                        FreezeBucket(activeBucket);
-                    }
+                    // Step 5: Freeze ALL unfrozen buckets and create a new one
+                    FreezeAllUnfrozenBuckets();
 
                     CheckpointMetadata newMetadata = CreateNewBucket(name, activeScene, fullScenePath, consumedTracks);
 
                     if (newMetadata != null)
                     {
+                        Debug.Log($"[CheckpointManager] Created new bucket '{newMetadata.id}' (name='{newMetadata.name}', trackedAssets={newMetadata.trackedAssetPaths?.Count ?? 0}, sceneIsDirty={sceneIsDirty})");
                         // Step 6: Enforce retention limits
                         EnforceRetentionLimits();
+                    }
+                    else
+                    {
+                        Debug.LogWarning($"[CheckpointManager] CreateNewBucket returned null (name='{name}', trackedCount={consumedTracks.Count}, sceneIsDirty={sceneIsDirty})");
                     }
 
                     return newMetadata;
@@ -496,6 +499,23 @@ namespace UnityMCP.Editor.Services
             }
         }
 
+        /// <summary>
+        /// Freezes a checkpoint by ID, making it immutable.
+        /// Used to preserve safety-net checkpoints (e.g., "Before restore (auto)").
+        /// </summary>
+        /// <param name="checkpointId">The ID of the checkpoint to freeze.</param>
+        /// <returns>True if frozen successfully, false if not found or write failed.</returns>
+        public static bool FreezeCheckpoint(string checkpointId)
+        {
+            lock (_lock)
+            {
+                CheckpointMetadata metadata = GetCheckpointMetadata(checkpointId);
+                if (metadata == null) return false;
+                if (metadata.isFrozen) return true; // Already frozen
+                return FreezeBucket(metadata);
+            }
+        }
+
         #endregion
 
         #region Bucket Operations
@@ -519,12 +539,35 @@ namespace UnityMCP.Editor.Services
 
         /// <summary>
         /// Freezes a bucket by setting isFrozen to true and writing updated metadata.
+        /// Returns true on success, false if metadata write failed (reverts in-memory state).
         /// Caller must hold _lock.
         /// </summary>
-        private static void FreezeBucket(CheckpointMetadata bucket)
+        private static bool FreezeBucket(CheckpointMetadata bucket)
         {
             bucket.isFrozen = true;
-            WriteMetadata(bucket);
+            if (!WriteMetadata(bucket))
+            {
+                Debug.LogWarning($"[CheckpointManager] Failed to freeze bucket '{bucket.id}'");
+                bucket.isFrozen = false;
+                return false;
+            }
+            return true;
+        }
+
+        /// <summary>
+        /// Freezes ALL non-frozen buckets to maintain the single-active-bucket invariant.
+        /// Caller must hold _lock.
+        /// </summary>
+        private static void FreezeAllUnfrozenBuckets()
+        {
+            List<CheckpointMetadata> checkpoints = ListCheckpointsInternal();
+            foreach (CheckpointMetadata checkpoint in checkpoints)
+            {
+                if (!checkpoint.isFrozen)
+                {
+                    FreezeBucket(checkpoint);
+                }
+            }
         }
 
         /// <summary>

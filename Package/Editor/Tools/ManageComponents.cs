@@ -8,7 +8,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Services;
+
 
 #pragma warning disable CS0618 // EditorUtility.InstanceIDToObject is deprecated but still functional
 
@@ -174,7 +174,6 @@ namespace UnityMCP.Editor.Tools
                 }
 
                 EditorUtility.SetDirty(targetGameObject);
-                CheckpointManager.Track(targetGameObject);
 
                 return new
                 {
@@ -244,7 +243,6 @@ namespace UnityMCP.Editor.Tools
             try
             {
                 int componentInstanceId = componentToRemove.GetInstanceID();
-                CheckpointManager.Track(targetGameObject);
                 Undo.DestroyObjectImmediate(componentToRemove);
 
                 EditorUtility.SetDirty(targetGameObject);
@@ -345,7 +343,6 @@ namespace UnityMCP.Editor.Tools
 
             EditorUtility.SetDirty(component);
             EditorUtility.SetDirty(targetGameObject);
-            CheckpointManager.Track(component);
 
             int successCount = results.Count(r => r is Dictionary<string, object> dict && dict.ContainsKey("success") && (bool)dict["success"]);
             int failCount = results.Count - successCount;

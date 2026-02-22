@@ -9,7 +9,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityMCP.Editor;
 using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Services;
+
 
 #pragma warning disable CS0618 // EditorUtility.InstanceIDToObject is deprecated but still functional
 
@@ -152,7 +152,6 @@ namespace UnityMCP.Editor.Tools
                     }
 
                     Undo.RegisterCreatedObjectUndo(newGameObject, $"Instantiate Prefab '{prefabAsset.name}'");
-                    CheckpointManager.Track(newGameObject);
                 }
                 catch (Exception exception)
                 {
@@ -190,7 +189,6 @@ namespace UnityMCP.Editor.Tools
                 }
 
                 createdNewObject = true;
-                CheckpointManager.Track(newGameObject);
             }
 
             Undo.RecordObject(newGameObject.transform, "Set GameObject Transform");
@@ -465,7 +463,6 @@ namespace UnityMCP.Editor.Tools
 
             EditorUtility.SetDirty(targetGameObject);
             EditorUtility.SetDirty(targetGameObject.transform);
-            CheckpointManager.Track(targetGameObject);
 
             return new
             {
@@ -503,7 +500,6 @@ namespace UnityMCP.Editor.Tools
                 {
                     string gameObjectName = targetGameObject.name;
                     int instanceId = targetGameObject.GetInstanceID();
-                    CheckpointManager.Track(targetGameObject);
                     Undo.DestroyObjectImmediate(targetGameObject);
                     deletedObjects.Add(new { name = gameObjectName, instanceID = instanceId });
                 }
@@ -600,7 +596,6 @@ namespace UnityMCP.Editor.Tools
             }
 
             EditorUtility.SetDirty(duplicatedGameObject);
-            CheckpointManager.Track(duplicatedGameObject);
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
             Selection.activeGameObject = duplicatedGameObject;
 
@@ -686,7 +681,6 @@ namespace UnityMCP.Editor.Tools
             targetGameObject.transform.position = newPosition;
 
             EditorUtility.SetDirty(targetGameObject);
-            CheckpointManager.Track(targetGameObject);
             EditorSceneManager.MarkSceneDirty(EditorSceneManager.GetActiveScene());
 
             return new

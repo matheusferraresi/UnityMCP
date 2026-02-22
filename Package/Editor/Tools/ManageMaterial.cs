@@ -459,7 +459,6 @@ namespace UnityMCP.Editor.Tools
             sharedMaterials[slot] = material;
             renderer.sharedMaterials = sharedMaterials;
             EditorUtility.SetDirty(renderer);
-            CheckpointManager.Track(renderer);
 
             return new
             {
@@ -687,7 +686,6 @@ namespace UnityMCP.Editor.Tools
             Undo.RecordObject(renderer, "Set Instance Material Color");
             material.SetColor(propertyName, color);
             renderer.materials = materials;
-            CheckpointManager.Track(renderer);
 
             return new
             {

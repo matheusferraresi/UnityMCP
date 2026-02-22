@@ -118,6 +118,8 @@ namespace UnityMCP.Editor.Tools
                 if (beforeMetadata != null)
                 {
                     beforeSnapshotId = beforeMetadata.id;
+                    // Freeze immediately to preserve as immutable safety net
+                    CheckpointManager.FreezeCheckpoint(beforeMetadata.id);
                 }
 
                 // Restore the requested checkpoint

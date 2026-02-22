@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Services;
+
 
 namespace UnityMCP.Editor.Tools.VFX
 {
@@ -196,7 +196,6 @@ namespace UnityMCP.Editor.Tools.VFX
             }
 
             EditorUtility.SetDirty(particleSystem);
-            CheckpointManager.Track(particleSystem);
 
             int successCount = 0;
             int failCount = 0;
