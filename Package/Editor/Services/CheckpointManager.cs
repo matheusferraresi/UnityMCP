@@ -272,6 +272,10 @@ namespace UnityMCP.Editor.Services
                     return null;
                 }
 
+                // Step 4: Capture root info BEFORE SaveScene to avoid phantom duplicates
+                // caused by Unity's post-save instance ID reconciliation
+                var rootInfo = CaptureRootInfo(activeScene);
+
                 // Save current scene state to disk before copying (only if scene has unsaved changes)
                 if (sceneIsDirty)
                 {
@@ -286,20 +290,20 @@ namespace UnityMCP.Editor.Services
 
                 if (!newBucket && activeBucket != null)
                 {
-                    // Step 4: Merge into existing active bucket
-                    return MergeIntoActiveBucket(activeBucket, activeScene, fullScenePath, consumedTracks);
+                    // Step 5: Merge into existing active bucket
+                    return MergeIntoActiveBucket(activeBucket, activeScene, fullScenePath, consumedTracks, rootInfo);
                 }
                 else
                 {
-                    // Step 5: Freeze ALL unfrozen buckets and create a new one
+                    // Step 6: Freeze ALL unfrozen buckets and create a new one
                     FreezeAllUnfrozenBuckets();
 
-                    CheckpointMetadata newMetadata = CreateNewBucket(name, activeScene, fullScenePath, consumedTracks);
+                    CheckpointMetadata newMetadata = CreateNewBucket(name, activeScene, fullScenePath, consumedTracks, rootInfo);
 
                     if (newMetadata != null)
                     {
                         Debug.Log($"[CheckpointManager] Created new bucket '{newMetadata.id}' (name='{newMetadata.name}', trackedAssets={newMetadata.trackedAssetPaths?.Count ?? 0}, sceneIsDirty={sceneIsDirty})");
-                        // Step 6: Enforce retention limits
+                        // Step 7: Enforce retention limits
                         EnforceRetentionLimits();
                     }
                     else
@@ -579,7 +583,8 @@ namespace UnityMCP.Editor.Services
             CheckpointMetadata activeBucket,
             Scene activeScene,
             string fullScenePath,
-            HashSet<string> newTrackedPaths)
+            HashSet<string> newTrackedPaths,
+            (List<string> rootNames, int rootCount, int totalCount) rootInfo)
         {
             string checkpointScenePath = Path.Combine(CheckpointDirectory, $"{activeBucket.id}.unity");
 
@@ -602,23 +607,10 @@ namespace UnityMCP.Editor.Services
             // Re-copy all tracked asset files to the bucket's asset snapshot directory
             SaveAssetSnapshots(activeBucket.id, existingTrackedPaths);
 
-            // Update scene root info
-            GameObject[] rootObjects = activeScene.GetRootGameObjects();
-            activeBucket.rootObjectNames = rootObjects
-                .Where(go => go != null)
-                .Select(go => go.name)
-                .ToList();
-            activeBucket.rootObjectCount = rootObjects.Length;
-
-            int totalObjectCount = 0;
-            foreach (GameObject rootObject in rootObjects)
-            {
-                if (rootObject != null)
-                {
-                    totalObjectCount += rootObject.GetComponentsInChildren<Transform>(includeInactive: true).Length;
-                }
-            }
-            activeBucket.totalObjectCount = totalObjectCount;
+            // Update scene root info from pre-captured data (captured before SaveScene)
+            activeBucket.rootObjectNames = rootInfo.rootNames;
+            activeBucket.rootObjectCount = rootInfo.rootCount;
+            activeBucket.totalObjectCount = rootInfo.totalCount;
 
             // Update timestamp
             activeBucket.timestamp = DateTime.Now;
@@ -637,7 +629,8 @@ namespace UnityMCP.Editor.Services
             string checkpointName,
             Scene activeScene,
             string fullScenePath,
-            HashSet<string> trackedPaths)
+            HashSet<string> trackedPaths,
+            (List<string> rootNames, int rootCount, int totalCount) rootInfo)
         {
             // Generate checkpoint ID and paths
             string checkpointId = Guid.NewGuid().ToString("N").Substring(0, 12);
@@ -657,23 +650,7 @@ namespace UnityMCP.Editor.Services
             // Copy tracked asset snapshots
             SaveAssetSnapshots(checkpointId, trackedPaths);
 
-            // Gather root object information for diff support
-            GameObject[] rootObjects = activeScene.GetRootGameObjects();
-            List<string> rootObjectNames = rootObjects
-                .Where(go => go != null)
-                .Select(go => go.name)
-                .ToList();
-
-            int totalObjectCount = 0;
-            foreach (GameObject rootObject in rootObjects)
-            {
-                if (rootObject != null)
-                {
-                    totalObjectCount += rootObject.GetComponentsInChildren<Transform>(includeInactive: true).Length;
-                }
-            }
-
-            // Build metadata
+            // Build metadata using pre-captured root info (captured before SaveScene)
             CheckpointMetadata metadata = new CheckpointMetadata
             {
                 id = checkpointId,
@@ -681,9 +658,9 @@ namespace UnityMCP.Editor.Services
                 timestamp = DateTime.Now,
                 sceneName = activeScene.name,
                 scenePath = activeScene.path,
-                rootObjectCount = rootObjects.Length,
-                totalObjectCount = totalObjectCount,
-                rootObjectNames = rootObjectNames,
+                rootObjectCount = rootInfo.rootCount,
+                totalObjectCount = rootInfo.totalCount,
+                rootObjectNames = rootInfo.rootNames,
                 trackedAssetPaths = trackedPaths.ToList(),
                 isFrozen = false
             };
@@ -848,7 +825,17 @@ namespace UnityMCP.Editor.Services
                 return (new List<string>(), 0, 0);
             }
 
-            GameObject[] rootObjects = activeScene.GetRootGameObjects();
+            return CaptureRootInfo(activeScene);
+        }
+
+        /// <summary>
+        /// Captures root object names and counts from the given scene.
+        /// Must be called BEFORE EditorSceneManager.SaveScene() to avoid phantom
+        /// duplicates caused by Unity's post-save instance ID reconciliation.
+        /// </summary>
+        private static (List<string> rootNames, int rootCount, int totalCount) CaptureRootInfo(Scene scene)
+        {
+            GameObject[] rootObjects = scene.GetRootGameObjects();
             List<string> rootNames = rootObjects
                 .Where(go => go != null)
                 .Select(go => go.name)
