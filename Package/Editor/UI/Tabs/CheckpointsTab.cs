@@ -8,6 +8,7 @@ namespace UnityMCP.Editor.UI.Tabs
 {
     /// <summary>
     /// Checkpoints tab: save, restore, and diff scene checkpoints.
+    /// Displays bucket metadata including frozen/active status and tracked assets.
     /// </summary>
     public class CheckpointsTab : ITab
     {
@@ -17,8 +18,11 @@ namespace UnityMCP.Editor.UI.Tabs
         private readonly ScrollView _listScrollView;
         private readonly VisualElement _listContainer;
         private readonly VisualElement _emptyState;
+        private readonly Label _pendingIndicatorLabel;
+        private readonly VisualElement _pendingIndicator;
 
         private List<CheckpointMetadata> _cachedCheckpoints;
+        private bool _isActive;
 
         public CheckpointsTab()
         {
@@ -28,7 +32,7 @@ namespace UnityMCP.Editor.UI.Tabs
             // Toolbar row: name field + save button
             VisualElement toolbar = new VisualElement();
             toolbar.AddToClassList("row");
-            toolbar.style.marginBottom = 8;
+            toolbar.style.marginBottom = 4;
 
             _nameField = new TextField();
             _nameField.style.flexGrow = 1;
@@ -43,6 +47,17 @@ namespace UnityMCP.Editor.UI.Tabs
             toolbar.Add(saveButton);
 
             Root.Add(toolbar);
+
+            // Pending tracked assets indicator
+            _pendingIndicator = new VisualElement();
+            _pendingIndicator.AddToClassList("checkpoint-pending");
+            _pendingIndicator.style.display = DisplayStyle.None;
+
+            _pendingIndicatorLabel = new Label();
+            _pendingIndicatorLabel.AddToClassList("checkpoint-pending__label");
+            _pendingIndicator.Add(_pendingIndicatorLabel);
+
+            Root.Add(_pendingIndicator);
 
             // List scroll view
             _listScrollView = new ScrollView(ScrollViewMode.Vertical);
@@ -61,12 +76,21 @@ namespace UnityMCP.Editor.UI.Tabs
 
         public void OnActivate()
         {
+            _isActive = true;
             RebuildList();
+            UpdatePendingIndicator();
         }
 
-        public void OnDeactivate() { }
+        public void OnDeactivate()
+        {
+            _isActive = false;
+        }
 
-        public void Refresh() { }
+        public void Refresh()
+        {
+            if (!_isActive) return;
+            UpdatePendingIndicator();
+        }
 
         private void OnSave()
         {
@@ -79,6 +103,7 @@ namespace UnityMCP.Editor.UI.Tabs
                 {
                     _nameField.value = "";
                     RebuildList();
+                    UpdatePendingIndicator();
                 }
                 else
                 {
@@ -90,6 +115,26 @@ namespace UnityMCP.Editor.UI.Tabs
                 Debug.LogError($"[MCPServerWindow] Error saving checkpoint: {exception.Message}");
             }
         }
+
+        #region Pending Indicator
+
+        private void UpdatePendingIndicator()
+        {
+            IReadOnlyCollection<string> pendingTracks = CheckpointManager.PendingTracks;
+            int pendingCount = pendingTracks.Count;
+
+            if (pendingCount > 0)
+            {
+                _pendingIndicator.style.display = DisplayStyle.Flex;
+                _pendingIndicatorLabel.text = $"pending: {pendingCount} asset{(pendingCount != 1 ? "s" : "")} tracked";
+            }
+            else
+            {
+                _pendingIndicator.style.display = DisplayStyle.None;
+            }
+        }
+
+        #endregion
 
         #region List Building
 
@@ -129,14 +174,38 @@ namespace UnityMCP.Editor.UI.Tabs
             VisualElement mainRow = new VisualElement();
             mainRow.AddToClassList("row--spaced");
 
-            // Left: name + scene
+            // Left: name + scene + badges
             VisualElement leftColumn = new VisualElement();
             leftColumn.style.flexGrow = 1;
             leftColumn.style.overflow = Overflow.Hidden;
 
+            // Name row with status badge
+            VisualElement nameRow = new VisualElement();
+            nameRow.AddToClassList("row");
+
             Label nameLabel = new Label(checkpoint.name);
             nameLabel.AddToClassList("checkpoint-name");
-            leftColumn.Add(nameLabel);
+            nameRow.Add(nameLabel);
+
+            // Active/Frozen badge
+            Label statusBadge = new Label(checkpoint.isFrozen ? "Frozen" : "Active");
+            statusBadge.AddToClassList("pill");
+            statusBadge.AddToClassList(checkpoint.isFrozen ? "pill--stat" : "pill--success");
+            statusBadge.style.marginLeft = 6;
+            nameRow.Add(statusBadge);
+
+            // Tracked asset count badge
+            int trackedCount = checkpoint.trackedAssetPaths?.Count ?? 0;
+            if (trackedCount > 0)
+            {
+                Label assetCountBadge = new Label($"+{trackedCount} asset{(trackedCount != 1 ? "s" : "")}");
+                assetCountBadge.AddToClassList("pill");
+                assetCountBadge.AddToClassList("pill--readonly");
+                assetCountBadge.style.marginLeft = 4;
+                nameRow.Add(assetCountBadge);
+            }
+
+            leftColumn.Add(nameRow);
 
             Label sceneLabel = new Label(checkpoint.sceneName);
             sceneLabel.AddToClassList("checkpoint-scene");
@@ -172,6 +241,15 @@ namespace UnityMCP.Editor.UI.Tabs
 
             string capturedId = checkpoint.id;
 
+            // Assets button (only if there are tracked assets)
+            if (trackedCount > 0)
+            {
+                Button assetsButton = new Button(() => OnToggleAssets(entry, checkpoint)) { text = "Assets" };
+                assetsButton.AddToClassList("button--small");
+                assetsButton.style.marginRight = 2;
+                actionColumn.Add(assetsButton);
+            }
+
             Button diffButton = new Button(() => OnDiff(entry, capturedId)) { text = "Diff" };
             diffButton.AddToClassList("button--small");
             diffButton.AddToClassList("button--accent");
@@ -186,6 +264,43 @@ namespace UnityMCP.Editor.UI.Tabs
             entry.Add(mainRow);
 
             return entry;
+        }
+
+        #endregion
+
+        #region Tracked Assets Panel
+
+        private void OnToggleAssets(VisualElement entry, CheckpointMetadata checkpoint)
+        {
+            // Toggle: remove if already showing
+            VisualElement existing = entry.Q(name: "assets-panel");
+            if (existing != null)
+            {
+                existing.RemoveFromHierarchy();
+                return;
+            }
+
+            if (checkpoint.trackedAssetPaths == null || checkpoint.trackedAssetPaths.Count == 0)
+            {
+                return;
+            }
+
+            VisualElement assetsPanel = new VisualElement();
+            assetsPanel.name = "assets-panel";
+            assetsPanel.AddToClassList("checkpoint-assets");
+
+            Label headerLabel = new Label("TRACKED ASSETS");
+            headerLabel.AddToClassList("checkpoint-assets__header");
+            assetsPanel.Add(headerLabel);
+
+            foreach (string assetPath in checkpoint.trackedAssetPaths)
+            {
+                Label pathLabel = new Label(assetPath);
+                pathLabel.AddToClassList("checkpoint-assets__path");
+                assetsPanel.Add(pathLabel);
+            }
+
+            entry.Add(assetsPanel);
         }
 
         #endregion
@@ -218,6 +333,7 @@ namespace UnityMCP.Editor.UI.Tabs
                     if (restored != null)
                     {
                         RebuildList();
+                        UpdatePendingIndicator();
                     }
                     else
                     {
@@ -296,9 +412,39 @@ namespace UnityMCP.Editor.UI.Tabs
                     }
                 }
 
+                // Tracked asset differences
+                bool hasTrackedA = diff.trackedAssetsA != null && diff.trackedAssetsA.Count > 0;
+                bool hasTrackedB = diff.trackedAssetsB != null && diff.trackedAssetsB.Count > 0;
+
+                if (hasTrackedA || hasTrackedB)
+                {
+                    VisualElement assetDiffDivider = new VisualElement();
+                    assetDiffDivider.AddToClassList("checkpoint-assets__divider");
+                    diffPanel.Add(assetDiffDivider);
+
+                    Label assetDiffHeader = new Label("TRACKED ASSETS");
+                    assetDiffHeader.AddToClassList("checkpoint-assets__header");
+                    diffPanel.Add(assetDiffHeader);
+
+                    if (hasTrackedA)
+                    {
+                        Label checkpointAssetsLabel = new Label($"Checkpoint: {diff.trackedAssetsA.Count} asset{(diff.trackedAssetsA.Count != 1 ? "s" : "")}");
+                        checkpointAssetsLabel.AddToClassList("muted");
+                        diffPanel.Add(checkpointAssetsLabel);
+                    }
+
+                    if (hasTrackedB)
+                    {
+                        Label currentAssetsLabel = new Label($"Current: {diff.trackedAssetsB.Count} asset{(diff.trackedAssetsB.Count != 1 ? "s" : "")}");
+                        currentAssetsLabel.AddToClassList("muted");
+                        diffPanel.Add(currentAssetsLabel);
+                    }
+                }
+
                 // No changes
                 if ((diff.addedObjects == null || diff.addedObjects.Count == 0) &&
-                    (diff.removedObjects == null || diff.removedObjects.Count == 0))
+                    (diff.removedObjects == null || diff.removedObjects.Count == 0) &&
+                    !hasTrackedA && !hasTrackedB)
                 {
                     Label noChanges = new Label("No changes detected.");
                     noChanges.AddToClassList("muted");
