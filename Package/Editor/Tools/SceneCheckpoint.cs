@@ -40,13 +40,42 @@ namespace UnityMCP.Editor.Tools
         {
             try
             {
+                // Check preconditions to provide specific error messages
+                var activeScene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+                if (!activeScene.IsValid())
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Cannot save checkpoint: no valid active scene."
+                    };
+                }
+
+                if (string.IsNullOrEmpty(activeScene.path))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Cannot save checkpoint: scene has no path. Save the scene first."
+                    };
+                }
+
+                if (!activeScene.isDirty && !CheckpointManager.HasPendingTracks)
+                {
+                    return new
+                    {
+                        success = true,
+                        message = "No changes to save — scene is clean and no assets were tracked."
+                    };
+                }
+
                 CheckpointMetadata metadata = CheckpointManager.SaveCheckpoint(checkpointName, newBucket);
                 if (metadata == null)
                 {
                     return new
                     {
                         success = false,
-                        error = "Failed to save checkpoint. Ensure the scene is saved and has a valid path."
+                        error = "Failed to save checkpoint due to an unexpected error."
                     };
                 }
 
