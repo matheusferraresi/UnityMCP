@@ -312,11 +312,11 @@ namespace UnityMCP.Editor.Core
         /// </summary>
         private static void PollForRequests()
         {
-            // Re-entrancy guard: the native proxy keeps s_has_request=1 until AFTER
-            // SendResponse() is called and the HTTP handler clears the flag. If tool
-            // execution pumps EditorApplication.update (e.g., Camera.Render, AssetDatabase
-            // operations), a re-entrant call would see the same request and process it
-            // again, causing duplicate side effects (e.g., duplicate screenshot files).
+            // Re-entrancy guard: GetPendingRequest() atomically consumes the request
+            // (clears s_has_request), preventing duplicate processing across editor ticks.
+            // This guard provides additional safety against re-entrant calls during
+            // the same tick (e.g., if tool execution pumps EditorApplication.update
+            // via Camera.Render or AssetDatabase operations).
             if (s_isProcessingRequest) return;
 
             IntPtr ptr = GetPendingRequest();

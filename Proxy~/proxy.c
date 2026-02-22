@@ -516,11 +516,15 @@ EXPORT void SetPollingActive(int active)
 
 /*
  * Get the pending request body, if any.
+ * Atomically consumes the request: clears s_has_request so subsequent
+ * polls on the next editor tick won't return the same request while the
+ * HTTP handler thread is still waiting for the response.
  */
 EXPORT const char* GetPendingRequest(void)
 {
     if (s_has_request)
     {
+        s_has_request = 0;
         return s_request_buffer;
     }
     return NULL;
