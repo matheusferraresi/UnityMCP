@@ -7,6 +7,7 @@ using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
@@ -157,6 +158,7 @@ namespace UnityMCP.Editor.Tools
                 AssetDatabase.CreateAsset(scriptableObject, fullAssetPath);
                 AssetDatabase.SaveAssets();
                 AssetDatabase.Refresh();
+                CheckpointManager.Track(fullAssetPath);
 
                 return new
                 {
@@ -211,6 +213,7 @@ namespace UnityMCP.Editor.Tools
 
                 EditorUtility.SetDirty(scriptableObject);
                 AssetDatabase.SaveAssets();
+                CheckpointManager.Track(scriptableObject);
 
                 int successCount = patchResults.Count(r => r is Dictionary<string, object> dict &&
                     dict.TryGetValue("success", out object successValue) && (bool)successValue);

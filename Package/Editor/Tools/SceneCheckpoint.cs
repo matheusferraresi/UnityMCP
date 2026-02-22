@@ -17,16 +17,17 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Saves a new scene checkpoint or lists all existing checkpoints.
         /// </summary>
-        [MCPTool("scene_checkpoint", "Save or list scene checkpoints for undo/restore capability", Category = "Scene", DestructiveHint = true)]
+        [MCPTool("scene_checkpoint", "Save or list scene checkpoints for undo/restore capability. Checkpoints capture both the scene and any assets modified by tools since the last save (bucket model).", Category = "Scene", DestructiveHint = true)]
         public static object Checkpoint(
             [MCPParam("action", "Action: 'save' to create checkpoint, 'list' to view all checkpoints", required: true, Enum = new[] { "save", "list" })] string action,
-            [MCPParam("name", "Optional name for the checkpoint (save only)")] string name = null)
+            [MCPParam("name", "Optional name for the checkpoint (save only)")] string name = null,
+            [MCPParam("new_bucket", "Start a new checkpoint bucket (true) or fold into current (false)")] bool newBucket = true)
         {
             string normalizedAction = (action ?? "").ToLowerInvariant().Trim();
 
             return normalizedAction switch
             {
-                "save" => SaveCheckpoint(name),
+                "save" => SaveCheckpoint(name, newBucket),
                 "list" => ListCheckpoints(),
                 _ => throw MCPException.InvalidParams($"Unknown action: '{action}'. Valid actions: save, list")
             };
@@ -35,17 +36,47 @@ namespace UnityMCP.Editor.Tools
         /// <summary>
         /// Saves the current scene state as a checkpoint.
         /// </summary>
-        private static object SaveCheckpoint(string checkpointName)
+        private static object SaveCheckpoint(string checkpointName, bool newBucket)
         {
             try
             {
-                CheckpointMetadata metadata = CheckpointManager.SaveCheckpoint(checkpointName);
+                // Check preconditions to provide specific error messages
+                var activeScene = UnityEditor.SceneManagement.EditorSceneManager.GetActiveScene();
+                if (!activeScene.IsValid())
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Cannot save checkpoint: no valid active scene."
+                    };
+                }
+
+                if (string.IsNullOrEmpty(activeScene.path))
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "Cannot save checkpoint: scene has no path. Save the scene first."
+                    };
+                }
+
+                CheckpointMetadata metadata = CheckpointManager.SaveCheckpoint(checkpointName, newBucket);
+
+                if (metadata == CheckpointManager.NothingToSave)
+                {
+                    return new
+                    {
+                        success = true,
+                        message = "No changes to save — scene is clean and no assets were tracked."
+                    };
+                }
+
                 if (metadata == null)
                 {
                     return new
                     {
                         success = false,
-                        error = "Failed to save checkpoint. Ensure the scene is saved and has a valid path."
+                        error = "Failed to save checkpoint due to an unexpected error."
                     };
                 }
 
@@ -100,7 +131,7 @@ namespace UnityMCP.Editor.Tools
         /// Restores a previously saved scene checkpoint.
         /// Automatically creates a "before restore" checkpoint before restoring.
         /// </summary>
-        [MCPTool("scene_restore", "Restore a previously saved scene checkpoint", Category = "Scene", DestructiveHint = true)]
+        [MCPTool("scene_restore", "Restore a previously saved scene checkpoint. Restores both the scene file and all tracked asset snapshots stored in the bucket.", Category = "Scene", DestructiveHint = true)]
         public static object Restore(
             [MCPParam("checkpoint_id", "ID of the checkpoint to restore", required: true)] string checkpointId)
         {
@@ -113,10 +144,12 @@ namespace UnityMCP.Editor.Tools
             {
                 // Get the current scene state for diff comparison
                 string beforeSnapshotId = null;
-                CheckpointMetadata beforeMetadata = CheckpointManager.SaveCheckpoint("Before restore (auto)");
-                if (beforeMetadata != null)
+                CheckpointMetadata beforeMetadata = CheckpointManager.SaveCheckpoint("Before restore (auto)", newBucket: true);
+                if (beforeMetadata != null && beforeMetadata != CheckpointManager.NothingToSave)
                 {
                     beforeSnapshotId = beforeMetadata.id;
+                    // Freeze immediately to preserve as immutable safety net
+                    CheckpointManager.FreezeCheckpoint(beforeMetadata.id);
                 }
 
                 // Restore the requested checkpoint
@@ -178,7 +211,7 @@ namespace UnityMCP.Editor.Tools
         /// Compares two checkpoints or the current scene against a checkpoint.
         /// Reports added and removed root objects and count changes.
         /// </summary>
-        [MCPTool("scene_diff", "Compare two checkpoints or current scene vs a checkpoint", Category = "Scene", ReadOnlyHint = true)]
+        [MCPTool("scene_diff", "Compare two checkpoints or current scene vs a checkpoint. Reports root object and tracked asset differences.", Category = "Scene", ReadOnlyHint = true)]
         public static object Diff(
             [MCPParam("checkpoint_a", "First checkpoint ID (or 'current' for active scene)", required: true)] string checkpointA,
             [MCPParam("checkpoint_b", "Second checkpoint ID (or 'current' for active scene)")] string checkpointB = "current")

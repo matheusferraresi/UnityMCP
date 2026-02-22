@@ -701,6 +701,58 @@
     font-size: 10px;
 }
 
+/* --- Checkpoint Pending Indicator --- */
+.checkpoint-pending {
+    flex-direction: row;
+    align-items: center;
+    padding: 3px 8px;
+    margin-bottom: 4px;
+    border-radius: var(--umcp-card-radius);
+    background-color: rgba(78, 205, 196, 0.06);
+    border-width: 1px;
+    border-color: rgba(78, 205, 196, 0.15);
+}
+
+.checkpoint-pending__label {
+    font-size: 10px;
+    color: var(--umcp-accent);
+    -unity-font-style: italic;
+}
+
+/* --- Checkpoint Tracked Assets Panel --- */
+.checkpoint-assets {
+    padding: 4px 8px;
+    margin-top: 4px;
+    border-radius: var(--umcp-card-radius);
+    background-color: var(--umcp-surface);
+    border-width: 1px;
+    border-color: var(--umcp-border);
+}
+
+.checkpoint-assets__header {
+    font-size: 9px;
+    color: var(--umcp-muted);
+    letter-spacing: 1px;
+    -unity-font-style: bold;
+    margin-bottom: 3px;
+}
+
+.checkpoint-assets__path {
+    font-size: 10px;
+    color: var(--umcp-accent);
+    padding: 1px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.checkpoint-assets__divider {
+    height: 1px;
+    background-color: var(--umcp-border);
+    margin-top: 4px;
+    margin-bottom: 4px;
+}
+
 /* --- Recipe Card --- */
 .recipe-card {
     background-color: var(--umcp-surface);

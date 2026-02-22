@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using UnityMCP.Editor.Core;
+using UnityMCP.Editor.Services;
 using UnityMCP.Editor.Utilities;
 
 namespace UnityMCP.Editor.Tools
@@ -137,6 +138,7 @@ namespace UnityMCP.Editor.Tools
 
                 // Refresh AssetDatabase to import the new script
                 AssetDatabase.Refresh();
+                CheckpointManager.Track(scriptPath);
 
                 return new
                 {
@@ -234,6 +236,7 @@ namespace UnityMCP.Editor.Tools
 
                 // Refresh AssetDatabase to reimport the script
                 AssetDatabase.ImportAsset(scriptPath, ImportAssetOptions.ForceUpdate);
+                CheckpointManager.Track(scriptPath);
 
                 int newLineCount = contents.Split('\n').Length;
 
@@ -280,6 +283,7 @@ namespace UnityMCP.Editor.Tools
                 string guid = AssetDatabase.AssetPathToGUID(scriptPath);
 
                 // Use AssetDatabase to delete (handles .meta file too)
+                CheckpointManager.Track(scriptPath);
                 bool deleted = AssetDatabase.DeleteAsset(scriptPath);
 
                 if (deleted)
