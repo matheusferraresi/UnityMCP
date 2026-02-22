@@ -99,7 +99,11 @@ namespace UnityMCP.Editor.UI.Tabs
             try
             {
                 CheckpointMetadata metadata = CheckpointManager.SaveCheckpoint(checkpointName);
-                if (metadata != null)
+                if (metadata == CheckpointManager.NothingToSave)
+                {
+                    Debug.Log("[MCPServerWindow] Nothing to save — scene is clean and no assets were tracked.");
+                }
+                else if (metadata != null)
                 {
                     _nameField.value = "";
                     RebuildList();
@@ -329,6 +333,13 @@ namespace UnityMCP.Editor.UI.Tabs
             {
                 try
                 {
+                    // Save auto-checkpoint before restoring (safety net)
+                    CheckpointMetadata beforeMetadata = CheckpointManager.SaveCheckpoint("Before restore (auto)", newBucket: true);
+                    if (beforeMetadata != null && beforeMetadata != CheckpointManager.NothingToSave)
+                    {
+                        CheckpointManager.FreezeCheckpoint(beforeMetadata.id);
+                    }
+
                     CheckpointMetadata restored = CheckpointManager.RestoreCheckpoint(checkpointId);
                     if (restored != null)
                     {

@@ -145,7 +145,7 @@ namespace UnityMCP.Editor.Tools
                 // Get the current scene state for diff comparison
                 string beforeSnapshotId = null;
                 CheckpointMetadata beforeMetadata = CheckpointManager.SaveCheckpoint("Before restore (auto)", newBucket: true);
-                if (beforeMetadata != null)
+                if (beforeMetadata != null && beforeMetadata != CheckpointManager.NothingToSave)
                 {
                     beforeSnapshotId = beforeMetadata.id;
                     // Freeze immediately to preserve as immutable safety net
