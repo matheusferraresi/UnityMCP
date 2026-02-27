@@ -487,8 +487,8 @@ namespace UnityMCP.Editor.Tools
                 foreach (var key in keys)
                 {
                     var keyObj = key is Newtonsoft.Json.Linq.JObject jo ? jo : Newtonsoft.Json.Linq.JObject.FromObject(key);
-                    float time = keyObj["time"]?.Value<float>() ?? 0f;
-                    float value = keyObj["value"]?.Value<float>() ?? 0f;
+                    float time = (float)(keyObj["time"] ?? 0f);
+                    float value = (float)(keyObj["value"] ?? 0f);
                     curve.AddKey(time, value);
                 }
             }

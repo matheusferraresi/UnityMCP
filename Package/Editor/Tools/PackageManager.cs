@@ -140,8 +140,7 @@ namespace UnityMCP.Editor.Tools
                 name = p.name,
                 version = p.version,
                 displayName = p.displayName,
-                source = p.source.ToString(),
-                status = p.status.ToString()
+                source = p.source.ToString()
             }).OrderBy(p => p.name).ToArray();
 
             return new
@@ -157,7 +156,7 @@ namespace UnityMCP.Editor.Tools
             if (string.IsNullOrEmpty(query))
                 throw MCPException.InvalidParams("'package_name' is required as search query.");
 
-            var request = Client.SearchAll(query);
+            var request = Client.SearchAll();
             while (!request.IsCompleted)
                 System.Threading.Thread.Sleep(100);
 
@@ -170,13 +169,16 @@ namespace UnityMCP.Editor.Tools
                 };
             }
 
-            var results = request.Result.Select(p => new
-            {
-                name = p.name,
-                version = p.versions.latest,
-                displayName = p.displayName,
-                description = p.description?.Length > 200 ? p.description.Substring(0, 200) + "..." : p.description
-            }).ToArray();
+            var results = request.Result
+                .Where(p => p.name.Contains(query, StringComparison.OrdinalIgnoreCase) ||
+                             (p.displayName != null && p.displayName.Contains(query, StringComparison.OrdinalIgnoreCase)))
+                .Select(p => new
+                {
+                    name = p.name,
+                    version = p.versions.latest,
+                    displayName = p.displayName,
+                    description = p.description?.Length > 200 ? p.description.Substring(0, 200) + "..." : p.description
+                }).ToArray();
 
             return new
             {
@@ -222,7 +224,6 @@ namespace UnityMCP.Editor.Tools
                 displayName = pkg.displayName,
                 description = pkg.description,
                 source = pkg.source.ToString(),
-                status = pkg.status.ToString(),
                 category = pkg.category,
                 documentationUrl = pkg.documentationUrl,
                 dependencies = pkg.dependencies?.Select(d => new { name = d.name, version = d.version }).ToArray()
