@@ -45,23 +45,36 @@ namespace UnityMCP.Editor.Utilities
 
             try
             {
-                // Unity ships Roslyn at <EditorContents>/DotNetSdkRoslyn/
-                // EditorApplication.applicationContentsPath points to the Data/ folder directly
                 string contentsPath = EditorApplication.applicationContentsPath;
-                string roslynDir = Path.Combine(contentsPath, "DotNetSdkRoslyn");
 
-                if (!Directory.Exists(roslynDir))
+                // Try multiple known locations for Roslyn DLLs in Unity's installation.
+                // MonoBleedingEdge has Mono-compatible builds that load in the editor runtime.
+                string[] searchPaths = new[]
                 {
-                    _loadError = $"Roslyn directory not found at '{roslynDir}'.";
-                    return;
+                    Path.Combine(contentsPath, "MonoBleedingEdge", "lib", "mono", "4.5"),
+                    Path.Combine(contentsPath, "DotNetSdkRoslyn"),
+                    Path.Combine(contentsPath, "Tools", "BuildPipeline", "Compilation", "ApiUpdater")
+                };
+
+                string codeAnalysisPath = null;
+                string csharpPath = null;
+
+                foreach (var dir in searchPaths)
+                {
+                    if (!Directory.Exists(dir)) continue;
+                    string ca = Path.Combine(dir, "Microsoft.CodeAnalysis.dll");
+                    string cs = Path.Combine(dir, "Microsoft.CodeAnalysis.CSharp.dll");
+                    if (File.Exists(ca) && File.Exists(cs))
+                    {
+                        codeAnalysisPath = ca;
+                        csharpPath = cs;
+                        break;
+                    }
                 }
 
-                string codeAnalysisPath = Path.Combine(roslynDir, "Microsoft.CodeAnalysis.dll");
-                string csharpPath = Path.Combine(roslynDir, "Microsoft.CodeAnalysis.CSharp.dll");
-
-                if (!File.Exists(codeAnalysisPath) || !File.Exists(csharpPath))
+                if (codeAnalysisPath == null)
                 {
-                    _loadError = "Microsoft.CodeAnalysis DLLs not found in Unity's Roslyn directory.";
+                    _loadError = $"Microsoft.CodeAnalysis DLLs not found. Searched: {string.Join(", ", searchPaths)}";
                     return;
                 }
 
