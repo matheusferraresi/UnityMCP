@@ -319,6 +319,7 @@ namespace UnityMCP.Editor.Tools
                 harmony_available = MethodPatcher.IsHarmonyAvailable,
                 harmony_version = typeof(Harmony).Assembly.GetName().Version.ToString(),
                 roslyn_available = RoslynCompiler.IsAvailable,
+                roslyn_error = RoslynCompiler.LoadError,
                 patch_engine = "harmony",
                 active_patch_count = patches.Count,
                 patches = patches.Values.Select(p => new

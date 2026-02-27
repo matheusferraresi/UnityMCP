@@ -45,9 +45,10 @@ namespace UnityMCP.Editor.Utilities
 
             try
             {
-                // Unity ships Roslyn at Editor/Data/DotNetSdkRoslyn/
-                string editorPath = Path.GetDirectoryName(EditorApplication.applicationPath);
-                string roslynDir = Path.Combine(editorPath, "Data", "DotNetSdkRoslyn");
+                // Unity ships Roslyn at <EditorContents>/DotNetSdkRoslyn/
+                // EditorApplication.applicationContentsPath points to the Data/ folder directly
+                string contentsPath = EditorApplication.applicationContentsPath;
+                string roslynDir = Path.Combine(contentsPath, "DotNetSdkRoslyn");
 
                 if (!Directory.Exists(roslynDir))
                 {
