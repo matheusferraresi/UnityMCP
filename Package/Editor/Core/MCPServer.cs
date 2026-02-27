@@ -173,6 +173,13 @@ namespace UnityMCP.Editor.Core
                 }
             };
 
+            // Include server instructions if configured
+            string instructions = ServerInstructionsProvider.GetInstructions();
+            if (!string.IsNullOrEmpty(instructions))
+            {
+                result["instructions"] = instructions;
+            }
+
             return CreateSuccessResponse(result, requestId);
         }
 
