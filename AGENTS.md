@@ -28,7 +28,7 @@ Native C Plugin sends HTTP response back to client
 - Default port: **8080** (configurable in Window > Unity MCP)
 - Max response size: 256KB
 
-## Tool Categories (66 tools)
+## Tool Categories (68 tools)
 
 | Category | Tools | Description |
 |----------|-------|-------------|
@@ -54,6 +54,8 @@ Native C Plugin sends HTTP response back to client
 | **Type Reflection** | type_inspector | Deep C# type inspection via reflection |
 | **Physics** | physics_simulate | Edit-mode physics stepping, raycasts, overlap checks |
 | **Lighting** | lighting_bake | Lightmap baking: start, stop, status, settings |
+| **Navigation** | navmesh_manage | NavMesh: bake, clear, query paths, agents, areas, surfaces |
+| **Terrain** | terrain_manage | Terrain: create, heightmap, textures, trees, detail density |
 | **Configuration** | server_instructions | Custom per-project AI instructions |
 | **Utility** | batch_execute, search_tools | Batch operations (10-100x faster), tool discovery |
 | **Debug** | test_echo, test_add, test_unity_info, test_list_scenes | Connectivity testing |

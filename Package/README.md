@@ -11,7 +11,7 @@ Unity-native [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) se
 
 - **100% Unity-native** - Runs entirely inside the Unity Editor as a single package. No Node.js, Python, or external runtimes to install or maintain.
 - **Zero telemetry** - Completely private Unity automation. No data collection.
-- **66 built-in tools** - Create GameObjects, run tests, build projects, manipulate scenes, hot-patch code, and more.
+- **68 built-in tools** - Create GameObjects, run tests, build projects, manipulate scenes, hot-patch code, and more.
 - **Play Mode hot patching** - Edit method bodies during Play Mode with Harmony 2.3.3 — see changes instantly without domain reload.
 - **AI vision** - Capture Game/Scene View screenshots as base64 PNG for multimodal AI models.
 - **28 built-in resources** - Read-only access to project settings, scene state, console output, and more.
@@ -134,12 +134,12 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 
 ## Available MCP Tools
 
-66 built-in tools organized by category:
+68 built-in tools organized by category:
 
 > **Tip:** Use `search_tools` with no arguments for a quick category overview, or pass a `query` or `category` to explore further.
 
 <details>
-<summary>View all 66 built-in tools (click to expand)</summary>
+<summary>View all 68 built-in tools (click to expand)</summary>
 
 ### GameObject Management
 - **gameobject_manage** - Create, modify, delete, duplicate GameObjects, or move them relative to other objects
@@ -222,6 +222,12 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 
 ### Lighting
 - **lighting_bake** - Control lightmap baking: start, stop, status, configure settings, manage probes
+
+### Navigation
+- **navmesh_manage** - Manage NavMesh: bake, clear, query paths, configure agents and areas, add surfaces
+
+### Terrain
+- **terrain_manage** - Manage Terrain: create, heightmap ops, texture painting, trees, detail density
 
 ### Configuration
 - **server_instructions** - Manage custom per-project AI instructions sent on MCP connection
