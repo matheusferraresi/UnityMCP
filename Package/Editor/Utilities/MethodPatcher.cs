@@ -4,6 +4,7 @@ using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using UnityEngine;
 
 namespace UnityMCP.Editor.Utilities
@@ -99,22 +100,16 @@ namespace UnityMCP.Editor.Utilities
 
             // Save original bytes for unpatching
             byte[] originalBytes = new byte[12];
+            Marshal.Copy(originalPtr, originalBytes, 0, 12);
 
-            unsafe
-            {
-                byte* ptr = (byte*)originalPtr.ToPointer();
-
-                // Save original prologue
-                for (int i = 0; i < 12; i++)
-                    originalBytes[i] = ptr[i];
-
-                // Write x64 absolute jump: mov rax, addr; jmp rax
-                ptr[0] = 0x48; // REX.W
-                ptr[1] = 0xB8; // MOV RAX, imm64
-                *(long*)(ptr + 2) = replacementPtr.ToInt64();
-                ptr[10] = 0xFF; // JMP RAX
-                ptr[11] = 0xE0;
-            }
+            // Write x64 absolute jump: mov rax, addr; jmp rax
+            byte[] jumpPatch = new byte[12];
+            jumpPatch[0] = 0x48; // REX.W
+            jumpPatch[1] = 0xB8; // MOV RAX, imm64
+            BitConverter.GetBytes(replacementPtr.ToInt64()).CopyTo(jumpPatch, 2);
+            jumpPatch[10] = 0xFF; // JMP RAX
+            jumpPatch[11] = 0xE0;
+            Marshal.Copy(jumpPatch, 0, originalPtr, 12);
 
             _activePatches[patchId] = new PatchRecord
             {
@@ -150,12 +145,7 @@ namespace UnityMCP.Editor.Utilities
                 if (record.engine == PatchEngine.NativeRedirect && record.originalBytes != null)
                 {
                     // Restore original bytes
-                    unsafe
-                    {
-                        byte* ptr = (byte*)record.originalNativePtr.ToPointer();
-                        for (int i = 0; i < record.originalBytes.Length; i++)
-                            ptr[i] = record.originalBytes[i];
-                    }
+                    Marshal.Copy(record.originalBytes, 0, record.originalNativePtr, record.originalBytes.Length);
                 }
 
                 _activePatches.Remove(patchId);
