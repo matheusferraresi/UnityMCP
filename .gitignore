@@ -1,1 +1,6 @@
-docs/
+# Generated documentation (API docs, etc.)
+docs/generated/
+
+# OS files
+.DS_Store
+Thumbs.db
