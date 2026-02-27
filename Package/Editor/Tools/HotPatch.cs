@@ -3,7 +3,6 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
 using System.Text;
 using System.Text.RegularExpressions;
 using HarmonyLib;
@@ -26,8 +25,8 @@ namespace UnityMCP.Editor.Tools
     /// 1. Redirect: Point an existing method at another already-compiled method
     /// 2. Auto-detect: Compare old vs new source, detect changed methods, save to disk
     ///
-    /// For full runtime compilation of arbitrary method bodies, Roslyn (USE_ROSLYN) is needed.
-    /// Without Roslyn, hot_patch saves changes to disk and reports what would be patched.
+    /// Runtime compilation uses Roslyn loaded dynamically from Unity's editor installation.
+    /// No extra DLLs or defines needed - works on any Unity version that ships Roslyn.
     /// </summary>
     [InitializeOnLoad]
     public static class HotPatch
@@ -52,7 +51,7 @@ namespace UnityMCP.Editor.Tools
                 required: true, Enum = new[] { "patch", "redirect", "rollback", "status" })] string action,
             [MCPParam("class_name", "Fully qualified class name (e.g. 'PlayerController' or 'MyGame.PlayerController')")] string className = null,
             [MCPParam("method_name", "Method name to patch (e.g. 'Update', 'TakeDamage')")] string methodName = null,
-            [MCPParam("new_body", "New method body code (for 'patch' with USE_ROSLYN, or saved to disk without it)")] string newBody = null,
+            [MCPParam("new_body", "New method body code (compiled at runtime via Roslyn)")] string newBody = null,
             [MCPParam("target_class", "Target class containing the replacement method (for 'redirect' action)")] string targetClass = null,
             [MCPParam("target_method", "Target method name to redirect to (for 'redirect' action)")] string targetMethod = null,
             [MCPParam("script_path", "Script path relative to Assets/ - detects all changed methods automatically")] string scriptPath = null,
@@ -203,7 +202,8 @@ namespace UnityMCP.Editor.Tools
                     return new
                     {
                         success = false,
-                        error = "Cannot compile method body at runtime without Roslyn (USE_ROSLYN define).",
+                        error = $"Runtime compilation failed. {(RoslynCompiler.IsAvailable ? "Check Unity console for details." : RoslynCompiler.LoadError)}",
+                        roslyn_available = RoslynCompiler.IsAvailable,
                         hint = "Use action 'redirect' to point at an already-compiled method, " +
                                "or use manage_script to save changes to disk and exit play mode to recompile.",
                         body_saved = false
@@ -318,6 +318,7 @@ namespace UnityMCP.Editor.Tools
                 is_playing = EditorApplication.isPlaying,
                 harmony_available = MethodPatcher.IsHarmonyAvailable,
                 harmony_version = typeof(Harmony).Assembly.GetName().Version.ToString(),
+                roslyn_available = RoslynCompiler.IsAvailable,
                 patch_engine = "harmony",
                 active_patch_count = patches.Count,
                 patches = patches.Values.Select(p => new
@@ -481,111 +482,21 @@ namespace UnityMCP.Editor.Tools
 
         /// <summary>
         /// Build a replacement MethodInfo from a method body string.
-        /// Requires USE_ROSLYN define + Microsoft.CodeAnalysis.CSharp for full compilation.
-        /// Without Roslyn, returns null - use 'redirect' action instead.
+        /// Dynamically loads Roslyn from Unity's editor installation for runtime compilation.
         /// </summary>
         private static MethodInfo BuildReplacementMethod(MethodInfo original, string newBody, Type ownerType)
         {
-#if USE_ROSLYN
-            return BuildWithRoslyn(original, newBody, ownerType);
-#else
-            Debug.LogWarning(
-                $"[HotPatch] Runtime method body compilation requires Roslyn (USE_ROSLYN define). " +
-                $"Use action 'redirect' to redirect to an already-compiled method, " +
-                $"or save changes to disk and exit play mode to recompile.");
-            return null;
-#endif
-        }
-
-#if USE_ROSLYN
-        private static MethodInfo BuildWithRoslyn(MethodInfo original, string newBody, Type ownerType)
-        {
-            try
+            if (!RoslynCompiler.IsAvailable)
             {
-                var parameters = original.GetParameters();
-                var paramList = string.Join(", ",
-                    parameters.Select(p => $"{p.ParameterType.FullName} {p.Name}"));
-
-                // For Harmony prefix: instance methods get __instance as first param
-                string thisParam = "";
-                if (!original.IsStatic)
-                {
-                    thisParam = $"{ownerType.FullName} __instance";
-                    if (parameters.Length > 0) thisParam += ", ";
-                }
-
-                // If method has a return value, add __result ref parameter
-                string resultParam = "";
-                string returnFalse = "";
-                string methodReturn = "void";
-                if (original.ReturnType != typeof(void))
-                {
-                    resultParam = $", ref {original.ReturnType.FullName} __result";
-                    returnFalse = "return false; // Skip original";
-                    methodReturn = "bool";
-                }
-                else
-                {
-                    returnFalse = "return false; // Skip original";
-                    methodReturn = "bool";
-                }
-
-                string code = $@"
-using System;
-using UnityEngine;
-
-public static class __HotPatchTemp {{
-    public static {methodReturn} __Replacement({thisParam}{paramList}{resultParam}) {{
-        {newBody}
-        {returnFalse}
-    }}
-}}";
-
-                var syntaxTree = Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree.ParseText(code);
-
-                var references = new List<Microsoft.CodeAnalysis.MetadataReference>();
-                foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
-                {
-                    try
-                    {
-                        if (!assembly.IsDynamic && !string.IsNullOrEmpty(assembly.Location))
-                            references.Add(Microsoft.CodeAnalysis.MetadataReference.CreateFromFile(assembly.Location));
-                    }
-                    catch { }
-                }
-
-                var compilation = Microsoft.CodeAnalysis.CSharp.CSharpCompilation.Create(
-                    $"HotPatch_{Guid.NewGuid():N}",
-                    syntaxTrees: new[] { syntaxTree },
-                    references: references,
-                    options: new Microsoft.CodeAnalysis.CSharp.CSharpCompilationOptions(
-                        Microsoft.CodeAnalysis.OutputKind.DynamicallyLinkedLibrary));
-
-                using (var ms = new MemoryStream())
-                {
-                    var result = compilation.Emit(ms);
-                    if (!result.Success)
-                    {
-                        var errors = result.Diagnostics
-                            .Where(d => d.Severity == Microsoft.CodeAnalysis.DiagnosticSeverity.Error)
-                            .Select(d => d.GetMessage());
-                        Debug.LogError($"[HotPatch] Compilation failed: {string.Join("; ", errors)}");
-                        return null;
-                    }
-
-                    ms.Seek(0, SeekOrigin.Begin);
-                    var patchAssembly = Assembly.Load(ms.ToArray());
-                    var patchType = patchAssembly.GetType("__HotPatchTemp");
-                    return patchType?.GetMethod("__Replacement", BindingFlags.Public | BindingFlags.Static);
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogError($"[HotPatch] Roslyn compilation error: {ex.Message}");
+                Debug.LogWarning(
+                    $"[HotPatch] Runtime compilation unavailable: {RoslynCompiler.LoadError} " +
+                    $"Use action 'redirect' to redirect to an already-compiled method, " +
+                    $"or save changes to disk and exit play mode to recompile.");
                 return null;
             }
+
+            return RoslynCompiler.CompileHarmonyPrefix(original, newBody, ownerType);
         }
-#endif
 
         #endregion
 
