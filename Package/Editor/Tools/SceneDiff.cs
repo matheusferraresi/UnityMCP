@@ -39,7 +39,7 @@ namespace UnityMCP.Editor.Tools
             catch (MCPException) { throw; }
             catch (Exception ex)
             {
-                throw new MCPException(-32603, $"Scene diff failed: {ex.Message}");
+                throw new MCPException($"Scene diff failed: {ex.Message}");
             }
         }
 
@@ -155,7 +155,7 @@ namespace UnityMCP.Editor.Tools
         {
             var scene = GetScene(sceneName);
             string key = SnapshotKey + "_" + scene.name;
-            SessionState.EraseString(key);
+            SessionState.SetString(key, "");
             return new { success = true, message = $"Snapshot cleared for '{scene.name}'." };
         }
 

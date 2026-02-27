@@ -33,7 +33,7 @@ namespace UnityMCP.Editor.Tools
             catch (MCPException) { throw; }
             catch (Exception ex)
             {
-                throw new MCPException(-32603, $"Undo/Redo operation failed: {ex.Message}");
+                throw new MCPException($"Undo/Redo operation failed: {ex.Message}");
             }
         }
 

@@ -34,7 +34,7 @@ namespace UnityMCP.Editor.Tools
             catch (MCPException) { throw; }
             catch (Exception ex)
             {
-                throw new MCPException(-32603, $"Server instructions operation failed: {ex.Message}");
+                throw new MCPException($"Server instructions operation failed: {ex.Message}");
             }
         }
 

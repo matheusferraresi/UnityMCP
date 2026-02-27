@@ -38,7 +38,7 @@ namespace UnityMCP.Editor.Tools
             catch (MCPException) { throw; }
             catch (Exception ex)
             {
-                throw new MCPException(-32603, $"Asset preview failed: {ex.Message}");
+                throw new MCPException($"Asset preview failed: {ex.Message}");
             }
         }
 

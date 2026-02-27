@@ -50,14 +50,14 @@ namespace UnityMCP.Editor.Tools
             catch (MCPException) { throw; }
             catch (Exception ex)
             {
-                throw new MCPException(-32603, $"Lighting operation failed: {ex.Message}");
+                throw new MCPException($"Lighting operation failed: {ex.Message}");
             }
         }
 
         private static object BakeSync()
         {
             if (Lightmapping.isRunning)
-                throw new MCPException(-32603, "A bake is already in progress. Use 'cancel' to stop it first.");
+                throw new MCPException("A bake is already in progress. Use 'cancel' to stop it first.");
 
             bool success = Lightmapping.Bake();
             return new
@@ -71,7 +71,7 @@ namespace UnityMCP.Editor.Tools
         private static object BakeAsync()
         {
             if (Lightmapping.isRunning)
-                throw new MCPException(-32603, "A bake is already in progress. Use 'status' to check progress or 'cancel' to stop.");
+                throw new MCPException("A bake is already in progress. Use 'status' to check progress or 'cancel' to stop.");
 
             bool started = Lightmapping.BakeAsync();
             return new

@@ -44,7 +44,7 @@ namespace UnityMCP.Editor.Tools
             catch (MCPException) { throw; }
             catch (Exception ex)
             {
-                throw new MCPException(-32603, $"Physics operation failed: {ex.Message}");
+                throw new MCPException($"Physics operation failed: {ex.Message}");
             }
         }
 
@@ -266,7 +266,7 @@ namespace UnityMCP.Editor.Tools
         {
             if (data == null) return null;
             if (data is Newtonsoft.Json.Linq.JArray arr && arr.Count >= 3)
-                return new Vector3(arr[0].Value<float>(), arr[1].Value<float>(), arr[2].Value<float>());
+                return new Vector3((float)arr[0], (float)arr[1], (float)arr[2]);
             if (data is Newtonsoft.Json.Linq.JObject obj)
                 return new Vector3(obj.Value<float>("x"), obj.Value<float>("y"), obj.Value<float>("z"));
             return null;

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using TMPro;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UI;
@@ -67,7 +68,7 @@ namespace UnityMCP.Editor.Tools
             catch (MCPException) { throw; }
             catch (Exception ex)
             {
-                throw new MCPException(-32603, $"UGUI operation failed: {ex.Message}");
+                throw new MCPException($"UGUI operation failed: {ex.Message}");
             }
         }
 
@@ -258,7 +259,7 @@ namespace UnityMCP.Editor.Tools
                 throw MCPException.InvalidParams($"UI element not found: '{target}'");
 
             // Try TMPro first, then legacy Text
-            var tmpText = rect.GetComponentInChildren<TMPro.TMP_Text>();
+            var tmpText = rect.GetComponentInChildren<TMP_Text>();
             if (tmpText != null)
             {
                 Undo.RecordObject(tmpText, $"Set Text on '{rect.name}'");
@@ -367,10 +368,10 @@ namespace UnityMCP.Editor.Tools
             textRect.offsetMin = Vector2.zero;
             textRect.offsetMax = Vector2.zero;
 
-            var tmp = textGo.AddComponent<TMPro.TextMeshProUGUI>();
+            var tmp = textGo.AddComponent<TextMeshProUGUI>();
             tmp.text = text;
             tmp.fontSize = fontSize ?? 24;
-            tmp.alignment = TMPro.TextAlignmentOptions.Center;
+            tmp.alignment = TextAlignmentOptions.Center;
             tmp.color = Color.black;
 
             return go;
@@ -381,7 +382,7 @@ namespace UnityMCP.Editor.Tools
             var go = new GameObject(name, typeof(RectTransform), typeof(CanvasRenderer));
             go.transform.SetParent(parent, false);
 
-            var tmp = go.AddComponent<TMPro.TextMeshProUGUI>();
+            var tmp = go.AddComponent<TextMeshProUGUI>();
             tmp.text = text;
             tmp.fontSize = fontSize ?? 24;
             tmp.color = !string.IsNullOrEmpty(color) ? ParseColor(color) : Color.white;
@@ -497,9 +498,9 @@ namespace UnityMCP.Editor.Tools
             phRect.sizeDelta = Vector2.zero;
             phRect.offsetMin = Vector2.zero;
             phRect.offsetMax = Vector2.zero;
-            var phText = placeholderGo.AddComponent<TMPro.TextMeshProUGUI>();
+            var phText = placeholderGo.AddComponent<TextMeshProUGUI>();
             phText.text = placeholder ?? "Enter text...";
-            phText.fontStyle = TMPro.FontStyles.Italic;
+            phText.fontStyle = FontStyles.Italic;
             phText.color = new Color(0.2f, 0.2f, 0.2f, 0.5f);
             phText.fontSize = 14;
 
@@ -512,11 +513,11 @@ namespace UnityMCP.Editor.Tools
             tRect.sizeDelta = Vector2.zero;
             tRect.offsetMin = Vector2.zero;
             tRect.offsetMax = Vector2.zero;
-            var tText = textGo.AddComponent<TMPro.TextMeshProUGUI>();
+            var tText = textGo.AddComponent<TextMeshProUGUI>();
             tText.fontSize = 14;
             tText.color = Color.black;
 
-            var inputField = go.AddComponent<TMPro.TMP_InputField>();
+            var inputField = go.AddComponent<TMP_InputField>();
             inputField.textViewport = textAreaRect;
             inputField.textComponent = tText;
             inputField.placeholder = phText;
@@ -613,7 +614,7 @@ namespace UnityMCP.Editor.Tools
             lRect.anchorMax = Vector2.one;
             lRect.offsetMin = new Vector2(23, 1);
             lRect.offsetMax = new Vector2(-5, -2);
-            var tmp = labelGo.AddComponent<TMPro.TextMeshProUGUI>();
+            var tmp = labelGo.AddComponent<TextMeshProUGUI>();
             tmp.text = label;
             tmp.fontSize = 14;
             tmp.color = Color.white;
@@ -644,16 +645,16 @@ namespace UnityMCP.Editor.Tools
             lRect.anchorMax = Vector2.one;
             lRect.offsetMin = new Vector2(10, 6);
             lRect.offsetMax = new Vector2(-25, -7);
-            var tmp = labelGo.AddComponent<TMPro.TextMeshProUGUI>();
+            var tmp = labelGo.AddComponent<TextMeshProUGUI>();
             tmp.text = "Option A";
             tmp.fontSize = 14;
             tmp.color = Color.black;
 
-            var dropdown = go.AddComponent<TMPro.TMP_Dropdown>();
+            var dropdown = go.AddComponent<TMP_Dropdown>();
             dropdown.captionText = tmp;
-            dropdown.options.Add(new TMPro.TMP_Dropdown.OptionData("Option A"));
-            dropdown.options.Add(new TMPro.TMP_Dropdown.OptionData("Option B"));
-            dropdown.options.Add(new TMPro.TMP_Dropdown.OptionData("Option C"));
+            dropdown.options.Add(new TMP_Dropdown.OptionData("Option A"));
+            dropdown.options.Add(new TMP_Dropdown.OptionData("Option B"));
+            dropdown.options.Add(new TMP_Dropdown.OptionData("Option C"));
 
             return go;
         }
@@ -777,10 +778,10 @@ namespace UnityMCP.Editor.Tools
             if (paddingData == null) return;
             if (paddingData is Newtonsoft.Json.Linq.JArray arr && arr.Count == 4)
             {
-                padding.left = arr[0].Value<int>();
-                padding.right = arr[1].Value<int>();
-                padding.top = arr[2].Value<int>();
-                padding.bottom = arr[3].Value<int>();
+                padding.left = (int)arr[0];
+                padding.right = (int)arr[1];
+                padding.top = (int)arr[2];
+                padding.bottom = (int)arr[3];
             }
         }
 
@@ -794,7 +795,7 @@ namespace UnityMCP.Editor.Tools
         private static Vector2? ParseVector2(object data)
         {
             if (data is Newtonsoft.Json.Linq.JArray arr && arr.Count >= 2)
-                return new Vector2(arr[0].Value<float>(), arr[1].Value<float>());
+                return new Vector2((float)arr[0], (float)arr[1]);
             if (data is Newtonsoft.Json.Linq.JObject obj)
                 return new Vector2(obj.Value<float>("x"), obj.Value<float>("y"));
             return null;

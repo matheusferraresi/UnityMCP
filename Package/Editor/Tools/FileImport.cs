@@ -100,7 +100,7 @@ namespace UnityMCP.Editor.Tools
                 {
                     try { File.Delete(fullDestPath); } catch { }
                 }
-                throw new MCPException(-32603, $"Import failed: {ex.Message}");
+                throw new MCPException($"Import failed: {ex.Message}");
             }
         }
 
