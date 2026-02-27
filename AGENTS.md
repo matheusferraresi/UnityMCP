@@ -28,24 +28,52 @@ Native C Plugin sends HTTP response back to client
 - Default port: **8080** (configurable in Window > Unity MCP)
 - Max response size: 256KB
 
-## Tool Categories
+## Tool Categories (66 tools)
 
 | Category | Tools | Description |
 |----------|-------|-------------|
 | **Scene** | scene_create, scene_load, scene_save, scene_get_active, scene_get_hierarchy, scene_screenshot | Scene lifecycle and inspection |
+| **Scene Tracking** | scene_diff | Snapshot/diff scene hierarchy changes |
 | **GameObject** | gameobject_manage, gameobject_find | Create, modify, delete, duplicate, move GameObjects |
 | **Component** | component_manage | Add, remove, inspect, set properties on components |
-| **Asset** | asset_manage, manage_script, manage_material, manage_shader, manage_texture, manage_scriptable_object, prefab_manage | Full asset pipeline control |
-| **Animation** | animation_controller, animation_clip | AnimatorController and AnimationClip authoring |
+| **Asset** | asset_manage, manage_script, manage_material, manage_shader, manage_texture, manage_scriptable_object, prefab_manage, file_import, asset_preview | Full asset pipeline control + external import + previews |
+| **Animation** | animation_controller | AnimatorController authoring |
 | **VFX** | manage_vfx | Particles, line renderers, trail renderers |
-| **Console** | console_read, console_write | Read/write Unity Console |
+| **UI (UGUI)** | manage_ugui | Canvas, Button, Text, Image, Panel, ScrollView, InputField, etc. |
+| **Console** | console_read, console_write | Read/write/clear Unity Console |
 | **Tests** | tests_run, tests_get_job | Async test execution |
 | **Profiler** | profiler_start, profiler_stop, profiler_get_job | Performance profiling |
 | **Build** | build_start, build_get_job | Player builds |
 | **UIToolkit** | uitoolkit_query, uitoolkit_get_styles, uitoolkit_click, uitoolkit_get_value, uitoolkit_set_value, uitoolkit_navigate | Editor UI automation |
-| **Editor** | manage_editor, playmode_enter/exit/pause/step, selection_get/set, execute_menu_item, unity_refresh, recompile_scripts, package_manage | Editor state and controls |
-| **Utility** | batch_execute, search_tools, validate_script_advanced | Batch operations, discovery, validation |
+| **Editor** | manage_editor, playmode_enter/exit/pause/step, selection_get/set, execute_menu_item, unity_refresh, recompile_scripts, package_manage, undo_redo | Editor state, controls, undo system |
+| **Script Editing** | smart_edit, validate_script_advanced | Targeted diff editing + Roslyn validation |
+| **Compilation** | compile_and_watch | Trigger compilation, watch for errors with structured results |
+| **Hot Patching** | hot_patch | Harmony 2.3.3 method-level Play Mode patching |
+| **Vision** | vision_capture | Base64 PNG screenshots for multimodal AI |
+| **Play Mode Debug** | debug_play | Automated play testing with state capture |
+| **Type Reflection** | type_inspector | Deep C# type inspection via reflection |
+| **Physics** | physics_simulate | Edit-mode physics stepping, raycasts, overlap checks |
+| **Lighting** | lighting_bake | Lightmap baking: start, stop, status, settings |
+| **Configuration** | server_instructions | Custom per-project AI instructions |
+| **Utility** | batch_execute, search_tools | Batch operations (10-100x faster), tool discovery |
 | **Debug** | test_echo, test_add, test_unity_info, test_list_scenes | Connectivity testing |
+
+## Hot Patching (Harmony 2.3.3)
+
+UnityMCP bundles [Harmony](https://github.com/pardeike/Harmony) (MIT license, v2.3.3) in `Plugins/0Harmony.dll` for Play Mode method patching.
+
+**How it works:**
+1. Agent edits a method via `smart_edit` or `manage_script`
+2. `hot_patch` detects changed methods via source diff
+3. Harmony patches the method in-memory (no domain reload)
+4. Patches auto-revert when exiting Play Mode
+
+**Actions:** `patch`, `redirect`, `rollback`, `status`
+
+**Limitations:**
+- Method bodies only (no new types, fields, or signatures)
+- Falls back to native JIT redirect if Harmony prefix patching fails
+- Reverts on domain reload
 
 ## Adding New Tools
 
@@ -106,6 +134,7 @@ Use `batch_execute` to run multiple tools in a single call (10-100x faster):
 2. **Play mode**: Some tools only work in Edit mode. Check tool annotations for `readOnlyHint`.
 3. **Response size**: Max 256KB per response. Use pagination for large datasets (console_read, scene_get_hierarchy).
 4. **Main thread**: All operations execute on Unity's main thread. Long-running operations (tests, builds, profiler) use async job patterns with polling.
+5. **Hot patching**: Only works during Play Mode. Method bodies only - no new fields or types.
 
 ## Configuration
 
@@ -130,9 +159,13 @@ Package/
 │   ├── Tools/          - All MCP tools ([MCPTool] methods)
 │   ├── Resources/      - All MCP resources ([MCPResource] methods)
 │   ├── Prompts/        - MCP prompts ([MCPPrompt] methods)
-│   ├── Utilities/      - Shared helpers
+│   ├── Utilities/      - Shared helpers (MethodPatcher, RoslynValidator)
 │   ├── Services/       - Job managers (test, build, profiler)
 │   └── UI/             - Editor window
-├── Plugins/            - Native C HTTP server DLLs
+├── Plugins/
+│   ├── 0Harmony.dll    - Harmony 2.3.3 (MIT) for hot patching
+│   ├── Windows/        - Native HTTP server (Windows)
+│   ├── macOS/          - Native HTTP server (macOS)
+│   └── Linux/          - Native HTTP server (Linux)
 └── package.json        - Unity package manifest
 ```

@@ -11,7 +11,9 @@ Unity-native [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) se
 
 - **100% Unity-native** - Runs entirely inside the Unity Editor as a single package. No Node.js, Python, or external runtimes to install or maintain.
 - **Zero telemetry** - Completely private Unity automation. No data collection.
-- **45 built-in tools** - Create GameObjects, run tests, build projects, manipulate scenes, and more.
+- **66 built-in tools** - Create GameObjects, run tests, build projects, manipulate scenes, hot-patch code, and more.
+- **Play Mode hot patching** - Edit method bodies during Play Mode with Harmony 2.3.3 — see changes instantly without domain reload.
+- **AI vision** - Capture Game/Scene View screenshots as base64 PNG for multimodal AI models.
 - **28 built-in resources** - Read-only access to project settings, scene state, console output, and more.
 - **4 workflow prompts** - Pre-built prompt templates for common Unity workflows.
 - **Remote access** - Connect from other devices on your network with TLS encryption and API key authentication.
@@ -132,12 +134,12 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 
 ## Available MCP Tools
 
-45 built-in tools organized by category:
+66 built-in tools organized by category:
 
 > **Tip:** Use `search_tools` with no arguments for a quick category overview, or pass a `query` or `category` to explore further.
 
 <details>
-<summary>View all 45 built-in tools (click to expand)</summary>
+<summary>View all 66 built-in tools (click to expand)</summary>
 
 ### GameObject Management
 - **gameobject_manage** - Create, modify, delete, duplicate GameObjects, or move them relative to other objects
@@ -153,6 +155,7 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **scene_get_active** - Get information about the currently active scene
 - **scene_get_hierarchy** - Get the hierarchy of GameObjects in the current scene with pagination
 - **scene_screenshot** - Capture a screenshot of the Game View
+- **scene_diff** - Take snapshots and diff scene hierarchy to track what was added, modified, or removed
 
 ### Asset Management
 - **asset_manage** - Create, delete, move, rename, duplicate, import, search, or get info about assets
@@ -160,9 +163,29 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **manage_material** - Create materials, set properties, assign to renderers, or set colors
 - **manage_texture** - Modify texture import settings (format, compression, size, etc.)
 - **manage_shader** - Create and manage shader assets
-- **manage_script** - Create C# scripts from templates
+- **manage_script** - Create, read, update, delete, and validate C# scripts
 - **manage_scriptable_object** - Create and manage ScriptableObject assets
 - **manage_vfx** - Create and configure particle systems, trail renderers, and line renderers
+- **file_import** - Import external files from disk into Assets/ with auto-configured import settings
+- **asset_preview** - Get asset preview thumbnails as base64 PNG (prefabs, materials, textures, models)
+
+### UI (UGUI)
+- **manage_ugui** - Create and modify Canvas, Button, Text (TMP), Image, Panel, ScrollView, InputField, Slider, Toggle, Dropdown
+
+### Script Editing & Compilation
+- **smart_edit** - Apply targeted edits via search/replace, line operations, or unified diff with validation
+- **validate_script_advanced** - Validate C# scripts with Roslyn semantic diagnostics
+- **compile_and_watch** - Trigger script compilation and get structured error/warning results
+- **recompile_scripts** - Force Unity to recompile all scripts
+
+### Hot Patching (Harmony 2.3.3)
+- **hot_patch** - Patch method bodies during Play Mode using Harmony — edit code and see results instantly without domain reload
+
+### Vision & AI
+- **vision_capture** - Capture Game View or Scene View as base64 PNG for multimodal AI vision
+
+### Play Mode Debug
+- **debug_play** - Automated play testing: enter play, wait, capture state snapshot, return results
 
 ### Build & Testing
 - **build_start** - Start a player build asynchronously, returns job_id for polling
@@ -181,12 +204,30 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **manage_editor** - Manage editor state, tags, layers, and tools
 - **unity_refresh** - Refresh Unity asset database and optionally request script compilation
 - **search_tools** - Search available tools by name, description, or category
+- **package_manage** - Manage Unity packages: add from registry/git/disk, remove, list, search
+- **undo_redo** - Control Unity's undo/redo system: undo, redo, get history, collapse groups
 
 ### Console & Profiling
 - **console_read** - Read Unity Console log entries with filtering and pagination
+- **console_write** - Write messages to Unity Console or clear it
 - **profiler_start** - Start profiler recording, returns job_id for polling
 - **profiler_stop** - Stop profiler recording and finalize job
 - **profiler_get_job** - Poll profiler job status and get captured data
+
+### Type Reflection
+- **type_inspector** - Inspect C# types: fields, properties, methods, attributes, inheritance chain
+
+### Physics
+- **physics_simulate** - Step physics in edit mode: simulate, raycast, sphere cast, overlap checks
+
+### Lighting
+- **lighting_bake** - Control lightmap baking: start, stop, status, configure settings, manage probes
+
+### Configuration
+- **server_instructions** - Manage custom per-project AI instructions sent on MCP connection
+
+### Animation
+- **animation_controller** - Manage AnimatorControllers: create, add states, transitions, parameters, layers
 
 ### UI Toolkit
 - **uitoolkit_query** - Query VisualElements in EditorWindows with compact overview and drill-down refs
@@ -195,6 +236,9 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **uitoolkit_get_value** - Get the current value from an input field or control
 - **uitoolkit_set_value** - Set the value of an input field or control
 - **uitoolkit_navigate** - Expand/collapse foldouts or select tabs in an EditorWindow
+
+### Batch Operations
+- **batch_execute** - Execute multiple tool calls in a single batch (10-100x faster than sequential)
 
 ### Debug & Testing
 - **test_echo** - Echo back input message (connectivity test)
