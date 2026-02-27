@@ -2,45 +2,43 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using HarmonyLib;
 using UnityEngine;
 
 namespace UnityMCP.Editor.Utilities
 {
     /// <summary>
-    /// Runtime method patching utility. Uses Harmony when available (USE_HARMONY define),
-    /// falls back to direct JIT redirect for simple cases.
+    /// Runtime method patching utility using Harmony 2.x.
+    /// Provides reliable method-level hot reload during Play Mode.
     ///
-    /// To enable Harmony:
-    /// 1. Add 0Harmony.dll (~200KB) to Package/Plugins/
-    /// 2. Add USE_HARMONY to Scripting Define Symbols (Player Settings)
-    ///
-    /// Without Harmony, uses unsafe native code redirect (x64 only, more fragile).
+    /// Harmony (MIT license) is bundled as 0Harmony.dll in Package/Plugins/.
+    /// Falls back to native JIT redirect only if Harmony fails.
     /// </summary>
     public static class MethodPatcher
     {
         private static readonly Dictionary<string, PatchRecord> _activePatches = new Dictionary<string, PatchRecord>();
 
-#if USE_HARMONY
-        private static HarmonyLib.Harmony _harmony;
-        private static HarmonyLib.Harmony Harmony
+        private static Harmony _harmony;
+        private static Harmony HarmonyInstance
         {
             get
             {
                 if (_harmony == null)
-                    _harmony = new HarmonyLib.Harmony("com.unitymcp.hotpatch");
+                    _harmony = new Harmony("com.unitymcp.hotpatch");
                 return _harmony;
             }
         }
-#endif
 
         /// <summary>
-        /// Patch a method by redirecting it to a replacement delegate.
+        /// Patch a method by redirecting it to a replacement method.
+        /// Uses Harmony prefix patching - the replacement completely replaces the original.
         /// </summary>
         /// <param name="original">The original method to patch</param>
-        /// <param name="replacement">The replacement method (must have same signature)</param>
+        /// <param name="replacement">The replacement method. For Harmony prefix patching,
+        /// this must be a static method. For instance methods, the first parameter should be
+        /// the instance type (named __instance by Harmony convention).</param>
         /// <returns>A patch ID that can be used to unpatch later</returns>
         public static string PatchMethod(MethodInfo original, MethodInfo replacement)
         {
@@ -55,43 +53,52 @@ namespace UnityMCP.Editor.Utilities
             if (_activePatches.ContainsKey(patchId))
                 UnpatchMethod(patchId);
 
-#if USE_HARMONY
-            return PatchWithHarmony(original, replacement, patchId);
-#else
-            return PatchWithRedirect(original, replacement, patchId);
-#endif
-        }
-
-#if USE_HARMONY
-        private static string PatchWithHarmony(MethodInfo original, MethodInfo replacement, string patchId)
-        {
             try
             {
-                // Use Harmony prefix that completely replaces the method
-                Harmony.Patch(original, prefix: new HarmonyLib.HarmonyMethod(replacement));
-
-                _activePatches[patchId] = new PatchRecord
-                {
-                    patchId = patchId,
-                    original = original,
-                    replacement = replacement,
-                    patchedAt = DateTime.UtcNow,
-                    engine = PatchEngine.Harmony
-                };
-
-                return patchId;
+                return PatchWithHarmony(original, replacement, patchId);
             }
-            catch (Exception ex)
+            catch (Exception harmonyEx)
             {
-                throw new InvalidOperationException($"Harmony patch failed for {patchId}: {ex.Message}", ex);
+                Debug.LogWarning($"[MethodPatcher] Harmony patch failed for {patchId}, falling back to native redirect: {harmonyEx.Message}");
+                try
+                {
+                    return PatchWithNativeRedirect(original, replacement, patchId);
+                }
+                catch (Exception nativeEx)
+                {
+                    throw new InvalidOperationException(
+                        $"Both Harmony and native redirect failed for {patchId}.\n" +
+                        $"Harmony: {harmonyEx.Message}\nNative: {nativeEx.Message}", nativeEx);
+                }
             }
         }
-#endif
 
-        private static string PatchWithRedirect(MethodInfo original, MethodInfo replacement, string patchId)
+        /// <summary>
+        /// Patch using Harmony prefix. The prefix method returning false skips the original.
+        /// </summary>
+        private static string PatchWithHarmony(MethodInfo original, MethodInfo replacement, string patchId)
         {
-            // Fallback: direct native code redirect (x64 only)
-            // Force JIT compilation of both methods
+            HarmonyInstance.Patch(original, prefix: new HarmonyMethod(replacement));
+
+            _activePatches[patchId] = new PatchRecord
+            {
+                patchId = patchId,
+                original = original,
+                replacement = replacement,
+                patchedAt = DateTime.UtcNow,
+                engine = PatchEngine.Harmony
+            };
+
+            Debug.Log($"[MethodPatcher] Patched {patchId} via Harmony");
+            return patchId;
+        }
+
+        /// <summary>
+        /// Fallback: direct native code redirect (x64 only, more fragile).
+        /// Writes a JMP instruction at the original method's native code entry point.
+        /// </summary>
+        private static string PatchWithNativeRedirect(MethodInfo original, MethodInfo replacement, string patchId)
+        {
             RuntimeHelpers.PrepareMethod(original.MethodHandle);
             RuntimeHelpers.PrepareMethod(replacement.MethodHandle);
 
@@ -122,6 +129,7 @@ namespace UnityMCP.Editor.Utilities
                 engine = PatchEngine.NativeRedirect
             };
 
+            Debug.Log($"[MethodPatcher] Patched {patchId} via native redirect (fallback)");
             return patchId;
         }
 
@@ -135,16 +143,12 @@ namespace UnityMCP.Editor.Utilities
 
             try
             {
-#if USE_HARMONY
                 if (record.engine == PatchEngine.Harmony)
                 {
-                    Harmony.Unpatch(record.original, HarmonyLib.HarmonyPatchType.All, "com.unitymcp.hotpatch");
+                    HarmonyInstance.Unpatch(record.original, HarmonyPatchType.All, "com.unitymcp.hotpatch");
                 }
-                else
-#endif
-                if (record.engine == PatchEngine.NativeRedirect && record.originalBytes != null)
+                else if (record.engine == PatchEngine.NativeRedirect && record.originalBytes != null)
                 {
-                    // Restore original bytes
                     Marshal.Copy(record.originalBytes, 0, record.originalNativePtr, record.originalBytes.Length);
                 }
 
@@ -169,9 +173,7 @@ namespace UnityMCP.Editor.Utilities
             foreach (var id in patchIds)
                 UnpatchMethod(id);
 
-#if USE_HARMONY
-            try { Harmony.UnpatchAll("com.unitymcp.hotpatch"); } catch { }
-#endif
+            try { HarmonyInstance.UnpatchAll("com.unitymcp.hotpatch"); } catch { }
 
             _activePatches.Clear();
             return count;
@@ -183,19 +185,9 @@ namespace UnityMCP.Editor.Utilities
         public static IReadOnlyDictionary<string, PatchRecord> ActivePatches => _activePatches;
 
         /// <summary>
-        /// Check if Harmony is available.
+        /// Check if Harmony is available (always true now since it's bundled).
         /// </summary>
-        public static bool IsHarmonyAvailable
-        {
-            get
-            {
-#if USE_HARMONY
-                return true;
-#else
-                return false;
-#endif
-            }
-        }
+        public static bool IsHarmonyAvailable => true;
 
         public class PatchRecord
         {

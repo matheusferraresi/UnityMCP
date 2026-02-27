@@ -14,7 +14,8 @@
     "allowUnsafeCode": false,
     "overrideReferences": true,
     "precompiledReferences": [
-        "Newtonsoft.Json.dll"
+        "Newtonsoft.Json.dll",
+        "0Harmony.dll"
     ],
     "autoReferenced": true,
     "defineConstraints": [],
