@@ -172,36 +172,59 @@ public static class __HotPatchTemp {{
         /// </summary>
         private static byte[] Compile(string sourceCode)
         {
-            // CSharpSyntaxTree.ParseText(sourceCode)
-            var syntaxTreeType = _csharpAssembly.GetType("Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree");
-            var parseText = syntaxTreeType.GetMethod("ParseText",
-                new[] { typeof(string), _csharpAssembly.GetType("Microsoft.CodeAnalysis.CSharp.CSharpParseOptions"),
-                        typeof(string), _codeAnalysisAssembly.GetType("System.Text.Encoding") ?? typeof(object) });
+            // Convert source string to SourceText first (required by some Roslyn builds)
+            var sourceTextType = _codeAnalysisAssembly.GetType("Microsoft.CodeAnalysis.Text.SourceText");
+            var fromMethod = sourceTextType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Where(m => m.Name == "From" && m.GetParameters().Length >= 1 &&
+                            m.GetParameters()[0].ParameterType == typeof(string))
+                .OrderBy(m => m.GetParameters().Length)
+                .First();
 
-            // Fallback: find the simplest ParseText overload
+            object sourceText;
+            var fromParams = fromMethod.GetParameters();
+            if (fromParams.Length == 1)
+            {
+                sourceText = fromMethod.Invoke(null, new object[] { sourceCode });
+            }
+            else
+            {
+                var fromArgs = new object[fromParams.Length];
+                fromArgs[0] = sourceCode;
+                for (int i = 1; i < fromArgs.Length; i++)
+                    fromArgs[i] = fromParams[i].HasDefaultValue ? fromParams[i].DefaultValue : null;
+                sourceText = fromMethod.Invoke(null, fromArgs);
+            }
+
+            // CSharpSyntaxTree.ParseText(SourceText, ...)
+            var syntaxTreeType = _csharpAssembly.GetType("Microsoft.CodeAnalysis.CSharp.CSharpSyntaxTree");
+
+            // Find ParseText overload that takes SourceText as first param
+            var parseText = syntaxTreeType.GetMethods(BindingFlags.Public | BindingFlags.Static)
+                .Where(m => m.Name == "ParseText" &&
+                            m.GetParameters().Length >= 1 &&
+                            sourceTextType.IsAssignableFrom(m.GetParameters()[0].ParameterType))
+                .OrderBy(m => m.GetParameters().Length)
+                .FirstOrDefault();
+
+            // Fallback: try string overload
             if (parseText == null)
             {
                 parseText = syntaxTreeType.GetMethods(BindingFlags.Public | BindingFlags.Static)
-                    .Where(m => m.Name == "ParseText")
+                    .Where(m => m.Name == "ParseText" &&
+                                m.GetParameters().Length >= 1 &&
+                                m.GetParameters()[0].ParameterType == typeof(string))
                     .OrderBy(m => m.GetParameters().Length)
                     .First();
+                sourceText = sourceCode; // Use raw string for string overloads
             }
 
             object syntaxTree;
             var parseParams = parseText.GetParameters();
-            if (parseParams.Length == 1)
-            {
-                syntaxTree = parseText.Invoke(null, new object[] { sourceCode });
-            }
-            else
-            {
-                // Fill optional params with defaults
-                var args = new object[parseParams.Length];
-                args[0] = sourceCode;
-                for (int i = 1; i < args.Length; i++)
-                    args[i] = parseParams[i].HasDefaultValue ? parseParams[i].DefaultValue : null;
-                syntaxTree = parseText.Invoke(null, args);
-            }
+            var parseArgs = new object[parseParams.Length];
+            parseArgs[0] = sourceText;
+            for (int i = 1; i < parseArgs.Length; i++)
+                parseArgs[i] = parseParams[i].HasDefaultValue ? parseParams[i].DefaultValue : null;
+            syntaxTree = parseText.Invoke(null, parseArgs);
 
             // Build MetadataReferences from all loaded assemblies
             var metadataRefType = _codeAnalysisAssembly.GetType("Microsoft.CodeAnalysis.MetadataReference");
