@@ -1,11 +1,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Unity.AI.Navigation;
 using UnityEditor;
-using UnityEditor.AI;
 using UnityEngine;
 using UnityEngine.AI;
 using UnityMCP.Editor.Core;
+using EditorNavMeshBuilder = UnityEditor.AI.NavMeshBuilder;
 
 namespace UnityMCP.Editor.Tools
 {
@@ -57,7 +58,7 @@ namespace UnityMCP.Editor.Tools
         private static object BakeNavMesh()
         {
             var startTime = DateTime.UtcNow;
-            NavMeshBuilder.BuildNavMesh();
+            EditorNavMeshBuilder.BuildNavMesh();
             var elapsed = (DateTime.UtcNow - startTime).TotalMilliseconds;
 
             var triangulation = NavMesh.CalculateTriangulation();
@@ -73,7 +74,7 @@ namespace UnityMCP.Editor.Tools
 
         private static object ClearNavMesh()
         {
-            NavMeshBuilder.ClearAllNavMeshes();
+            EditorNavMeshBuilder.ClearAllNavMeshes();
             return new { success = true, message = "All NavMesh data cleared." };
         }
 
@@ -148,7 +149,7 @@ namespace UnityMCP.Editor.Tools
 
         private static object SetSettings(float radius, float height, float stepH, float slope)
         {
-            var serialized = new SerializedObject(NavMeshBuilder.navMeshSettingsObject);
+            var serialized = new SerializedObject(EditorNavMeshBuilder.navMeshSettingsObject);
 
             if (radius >= 0)
             {
@@ -215,7 +216,7 @@ namespace UnityMCP.Editor.Tools
             if (string.IsNullOrEmpty(target))
                 throw MCPException.InvalidParams("'target' is required for add_surface.");
 
-            var go = Utilities.GameObjectResolver.Resolve(target);
+            var go = GameObjectResolver.Resolve(target);
             if (go == null)
                 throw MCPException.InvalidParams($"GameObject '{target}' not found.");
 

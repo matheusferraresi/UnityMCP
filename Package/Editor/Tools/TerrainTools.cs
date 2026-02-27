@@ -71,7 +71,7 @@ namespace UnityMCP.Editor.Tools
             }
             else
             {
-                var go = Utilities.GameObjectResolver.Resolve(target);
+                var go = GameObjectResolver.Resolve(target);
                 if (go == null)
                     throw MCPException.InvalidParams($"GameObject '{target}' not found.");
                 terrain = go.GetComponent<Terrain>();
