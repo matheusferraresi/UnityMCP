@@ -7,14 +7,14 @@ using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
 #if USE_ROSLYN
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
 #endif
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Advanced script validation using Roslyn (when available) or enhanced structural analysis.

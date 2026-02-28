@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Captures Game View / Scene View screenshots and returns them as base64

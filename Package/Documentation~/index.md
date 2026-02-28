@@ -1,8 +1,8 @@
-# Unity MCP Documentation
+# Unixxty MCP Documentation
 
 ## Overview
 
-Unity MCP is a pure C# Model Context Protocol (MCP) server that runs inside the Unity Editor. It enables AI assistants like Claude to directly interact with your Unity project - creating GameObjects, editing scripts, running tests, building projects, and even hot-patching code during Play Mode.
+Unixxty MCP is a pure C# Model Context Protocol (MCP) server that runs inside the Unity Editor. It enables AI assistants like Claude to directly interact with your Unity project - creating GameObjects, editing scripts, running tests, building projects, and even hot-patching code during Play Mode.
 
 ## Quick Start
 
@@ -15,7 +15,7 @@ Unity MCP is a pure C# Model Context Protocol (MCP) server that runs inside the 
 
 ### 2. Verify Installation
 
-After installation, open `Window > Unity MCP` in the editor. You should see:
+After installation, open `Window > Unixxty MCP` in the editor. You should see:
 - Server status: Running
 - Port: 8080
 - Tools registered: 68
@@ -36,12 +36,12 @@ Add to your MCP client configuration:
 
 ## Architecture
 
-Unity MCP runs entirely inside Unity's editor process:
+Unixxty MCP runs entirely inside Unity's editor process:
 
 ```
 AI Assistant (Claude, etc.)
     ↓ HTTP (JSON-RPC 2.0)
-Unity MCP Server (localhost:8080)
+Unixxty MCP Server (localhost:8080)
     ↓ Direct API calls
 Unity Editor APIs
 ```
@@ -61,7 +61,7 @@ Edit method bodies during Play Mode without stopping. Uses Harmony 2.3.3 for met
 ### Extensibility
 Add custom tools and resources with simple C# attributes. See the included samples.
 
-## Extending Unity MCP
+## Extending Unixxty MCP
 
 ### Custom Tools
 
@@ -89,7 +89,7 @@ See `Samples~/CustomTool` and `Samples~/CustomResource` for complete examples.
 ## Troubleshooting
 
 ### Server not starting
-- Check `Window > Unity MCP` for error messages
+- Check `Window > Unixxty MCP` for error messages
 - Verify port 8080 is not in use by another process
 - Try restarting Unity
 

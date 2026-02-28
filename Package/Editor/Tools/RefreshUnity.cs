@@ -3,9 +3,9 @@ using System.Threading;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
-using UnityMCP.Editor.Services;
+using UnixxtyMCP.Editor.Services;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tool for refreshing the Unity asset database and optionally requesting script compilation.

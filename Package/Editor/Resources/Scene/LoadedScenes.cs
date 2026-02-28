@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEditor.SceneManagement;
 using UnityEngine.SceneManagement;
 
-namespace UnityMCP.Editor.Resources.Scene
+namespace UnixxtyMCP.Editor.Resources.Scene
 {
     /// <summary>
     /// Resource provider for information about currently loaded scenes.

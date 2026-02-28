@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Resources.Tests
+namespace UnixxtyMCP.Editor.Resources.Tests
 {
     /// <summary>
     /// Resource provider for listing available unit tests.

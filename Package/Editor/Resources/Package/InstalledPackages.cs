@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEditor.PackageManager;
 
-namespace UnityMCP.Editor.Resources.Package
+namespace UnixxtyMCP.Editor.Resources.Package
 {
     /// <summary>
     /// Resource provider for installed package information.

@@ -4,7 +4,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Services
+namespace UnixxtyMCP.Editor.Services
 {
     /// <summary>
     /// Status of a test job.
@@ -269,7 +269,7 @@ namespace UnityMCP.Editor.Services
     /// </summary>
     public static class TestJobManager
     {
-        private const string SessionStateKey = "UnityMCP.TestJobManager.Jobs";
+        private const string SessionStateKey = "UnixxtyMCP.TestJobManager.Jobs";
         private const int MaxJobsToKeep = 10;
         private static readonly object LockObject = new object();
 

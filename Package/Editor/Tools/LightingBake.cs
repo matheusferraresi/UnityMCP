@@ -4,10 +4,10 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Controls lightmap baking: start/stop bakes, check progress, configure settings,

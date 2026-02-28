@@ -5,9 +5,9 @@ using System.Reflection;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor;
+using UnixxtyMCP.Editor;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// Registry for discovering and invoking MCP tools marked with [MCPTool] attribute.

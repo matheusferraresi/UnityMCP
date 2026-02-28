@@ -5,11 +5,11 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityMCP.Editor.Utilities;
+using UnixxtyMCP.Editor.Utilities;
 
 #pragma warning disable CS0618 // EditorUtility.InstanceIDToObject is deprecated but still functional
 
-namespace UnityMCP.Editor.Tools.VFX
+namespace UnixxtyMCP.Editor.Tools.VFX
 {
     /// <summary>
     /// Shared utilities for VFX operations (particles, lines, trails).

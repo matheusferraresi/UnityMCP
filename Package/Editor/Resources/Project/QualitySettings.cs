@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-namespace UnityMCP.Editor.Resources.Project
+namespace UnixxtyMCP.Editor.Resources.Project
 {
     /// <summary>
     /// Resource provider for quality settings information.

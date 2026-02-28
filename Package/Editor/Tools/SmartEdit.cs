@@ -5,9 +5,9 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using UnityEditor;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Diff-based script editing tool. Applies targeted edits instead of replacing entire files.

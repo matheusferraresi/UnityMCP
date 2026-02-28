@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using UnityEngine;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Tools.VFX;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Tools.VFX;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tool for managing VFX components: ParticleSystem, LineRenderer, and TrailRenderer.

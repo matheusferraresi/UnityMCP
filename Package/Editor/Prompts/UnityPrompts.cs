@@ -1,8 +1,8 @@
 using System.Collections.Generic;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Prompts
+namespace UnixxtyMCP.Editor.Prompts
 {
     /// <summary>
     /// Built-in MCP prompts for common Unity workflows.

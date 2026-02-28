@@ -3,7 +3,7 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Resources.Editor
+namespace UnixxtyMCP.Editor.Resources.Editor
 {
     /// <summary>
     /// Resource provider for open editor windows.

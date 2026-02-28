@@ -7,7 +7,7 @@ using UnityEngine;
 using UnityEngine.InputSystem;
 #endif
 
-namespace UnityMCP.Editor.Resources.Project
+namespace UnixxtyMCP.Editor.Resources.Project
 {
     /// <summary>
     /// Resource provider for input system settings.

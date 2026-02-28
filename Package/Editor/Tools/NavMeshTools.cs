@@ -5,10 +5,10 @@ using Unity.AI.Navigation;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.AI;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 using EditorNavMeshBuilder = UnityEditor.AI.NavMeshBuilder;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     public static class NavMeshTools
     {

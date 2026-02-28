@@ -1,7 +1,7 @@
 {
   "name": "com.emeryporter.unitymcp",
   "version": "2.0.0",
-  "displayName": "Unity MCP - AI Editor Integration",
+  "displayName": "Unixxty MCP - AI Editor Integration",
   "description": "Pure C# MCP (Model Context Protocol) server running inside Unity Editor. 68 built-in tools + 28 resources for AI assistants to create GameObjects, edit scripts, run tests, build projects, hot-patch code in Play Mode, and more. Zero external dependencies - no Python, Node.js, or sidecar process needed.",
   "unity": "2022.3",
   "documentationUrl": "https://github.com/matheusferraresi/UnityMCP",

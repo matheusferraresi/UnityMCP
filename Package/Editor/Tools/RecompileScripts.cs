@@ -4,10 +4,10 @@ using System.Reflection;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Services;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Services;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Forces script recompilation and returns compilation logs.

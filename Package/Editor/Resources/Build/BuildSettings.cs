@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 
-namespace UnityMCP.Editor.Resources.Build
+namespace UnixxtyMCP.Editor.Resources.Build
 {
     /// <summary>
     /// Resource provider for build configuration settings.

@@ -1,10 +1,10 @@
 using System;
 using System.Collections.Generic;
 using UnityEditor;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Exposes Unity's Undo/Redo system for AI-driven scene editing.

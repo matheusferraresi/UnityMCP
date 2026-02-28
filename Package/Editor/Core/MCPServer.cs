@@ -5,7 +5,7 @@ using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// Handles MCP (Model Context Protocol) JSON-RPC requests.
@@ -18,7 +18,7 @@ namespace UnityMCP.Editor.Core
         private static readonly object InstanceLock = new object();
 
         private int _port = 8080;
-        private const string ServerName = "UnityMCP";
+        private const string ServerName = "UnixxtyMCP";
         internal const string ServerVersion = "1.6.9";
         private const int MainThreadTimeoutSeconds = 30;
 

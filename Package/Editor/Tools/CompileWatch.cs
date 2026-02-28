@@ -5,10 +5,10 @@ using System.Reflection;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Services;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Services;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Async compilation pipeline with structured error feedback.
@@ -162,7 +162,7 @@ namespace UnityMCP.Editor.Tools
     [InitializeOnLoad]
     public static class CompileJobManager
     {
-        private const string SessionStateKey = "UnityMCP.CompileJobManager.Jobs";
+        private const string SessionStateKey = "UnixxtyMCP.CompileJobManager.Jobs";
         private const int MaxJobsToKeep = 5;
 
         private static CompileJob _currentJob;

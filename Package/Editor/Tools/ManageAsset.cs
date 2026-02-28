@@ -4,11 +4,11 @@ using System.IO;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Utilities;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Utilities;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Handles asset management operations including create, delete, move, duplicate, import, and search.

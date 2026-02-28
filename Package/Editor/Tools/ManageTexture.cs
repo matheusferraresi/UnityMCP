@@ -4,10 +4,10 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Utilities;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Utilities;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tool for managing textures: get info, list, find, and modify import settings.

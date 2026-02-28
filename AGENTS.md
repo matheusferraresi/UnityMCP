@@ -1,8 +1,8 @@
-# UnityMCP - AI Agent Guide
+# UnixxtyMCP - AI Agent Guide
 
 ## Overview
 
-UnityMCP is a 100% Unity-native MCP (Model Context Protocol) server that runs entirely inside the Unity Editor. No external runtime (Python, Node.js, .NET) is needed. AI assistants connect via HTTP to control the editor.
+UnixxtyMCP is a 100% Unity-native MCP (Model Context Protocol) server that runs entirely inside the Unity Editor. No external runtime (Python, Node.js, .NET) is needed. AI assistants connect via HTTP to control the editor.
 
 ## Architecture
 
@@ -25,7 +25,7 @@ Native C Plugin sends HTTP response back to client
 - All tool execution happens on Unity's main thread
 - The native C plugin HTTP server survives domain reloads
 - One request at a time (sequential, not concurrent)
-- Default port: **8080** (configurable in Window > Unity MCP)
+- Default port: **8080** (configurable in Window > Unixxty MCP)
 - Max response size: 256KB
 
 ## Tool Categories (68 tools)
@@ -62,7 +62,7 @@ Native C Plugin sends HTTP response back to client
 
 ## Hot Patching (Harmony 2.3.3)
 
-UnityMCP bundles [Harmony](https://github.com/pardeike/Harmony) (MIT license, v2.3.3) in `Plugins/0Harmony.dll` for Play Mode method patching.
+UnixxtyMCP bundles [Harmony](https://github.com/pardeike/Harmony) (MIT license, v2.3.3) in `Plugins/0Harmony.dll` for Play Mode method patching.
 
 **How it works:**
 1. Agent edits a method via `smart_edit` or `manage_script`
@@ -86,8 +86,8 @@ UnityMCP bundles [Harmony](https://github.com/pardeike/Harmony) (MIT license, v2
 5. Tools are auto-discovered on domain reload (no registration needed)
 
 ```csharp
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
 
 public static class MyTools
 {

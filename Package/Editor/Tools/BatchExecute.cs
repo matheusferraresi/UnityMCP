@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Executes multiple MCP tool calls in a single batch for dramatically reduced round-trip overhead.

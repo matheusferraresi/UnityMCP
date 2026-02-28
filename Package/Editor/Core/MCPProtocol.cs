@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// JSON-RPC 2.0 standard error codes

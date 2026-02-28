@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 
-namespace UnityMCP.Editor.Resources.Asset
+namespace UnixxtyMCP.Editor.Resources.Asset
 {
     /// <summary>
     /// Resource provider for asset dependency information.

@@ -6,10 +6,10 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tracks scene changes by taking snapshots and computing diffs.
@@ -17,7 +17,7 @@ namespace UnityMCP.Editor.Tools
     /// </summary>
     public static class SceneDiff
     {
-        private const string SnapshotKey = "UnityMCP_SceneDiffSnapshot";
+        private const string SnapshotKey = "UnixxtyMCP_SceneDiffSnapshot";
 
         [MCPTool("scene_diff", "Track scene changes: take snapshots and diff against previous state to see what was added, modified, or removed", Category = "Scene")]
         public static object Execute(

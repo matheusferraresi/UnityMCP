@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// P/Invoke bindings and polling loop for the MCP proxy plugin.
@@ -18,7 +18,7 @@ namespace UnityMCP.Editor.Core
     [InitializeOnLoad]
     public static class MCPProxy
     {
-        private const string DLL_NAME = "UnityMCPProxy";
+        private const string DLL_NAME = "UnixxtyMCPProxy";
         private const int DEFAULT_PORT = 8080;
 
         /// <summary>
@@ -84,8 +84,8 @@ namespace UnityMCP.Editor.Core
         /// </summary>
         public static bool RemoteAccessEnabled
         {
-            get => EditorPrefs.GetBool("UnityMCP_RemoteAccess", false);
-            set => EditorPrefs.SetBool("UnityMCP_RemoteAccess", value);
+            get => EditorPrefs.GetBool("UnixxtyMCP_RemoteAccess", false);
+            set => EditorPrefs.SetBool("UnixxtyMCP_RemoteAccess", value);
         }
 
         /// <summary>
@@ -94,8 +94,8 @@ namespace UnityMCP.Editor.Core
         /// </summary>
         public static string ApiKey
         {
-            get => EditorPrefs.GetString("UnityMCP_ApiKey", "");
-            set => EditorPrefs.SetString("UnityMCP_ApiKey", value);
+            get => EditorPrefs.GetString("UnixxtyMCP_ApiKey", "");
+            set => EditorPrefs.SetString("UnixxtyMCP_ApiKey", value);
         }
 
         /// <summary>

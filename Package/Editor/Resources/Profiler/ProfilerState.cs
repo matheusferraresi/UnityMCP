@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEditorInternal;
 
-namespace UnityMCP.Editor.Resources.Profiler
+namespace UnixxtyMCP.Editor.Resources.Profiler
 {
     /// <summary>
     /// Resource provider for profiler state information.

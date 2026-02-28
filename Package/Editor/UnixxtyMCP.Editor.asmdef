@@ -1,6 +1,6 @@
 {
-    "name": "UnityMCP.Editor",
-    "rootNamespace": "UnityMCP.Editor",
+    "name": "UnixxtyMCP.Editor",
+    "rootNamespace": "UnixxtyMCP.Editor",
     "references": [
         "UnityEditor.TestRunner",
         "UnityEngine.TestRunner",

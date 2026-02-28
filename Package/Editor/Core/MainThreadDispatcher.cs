@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEditor;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// Dispatches actions to Unity's main thread using EditorApplication.update.

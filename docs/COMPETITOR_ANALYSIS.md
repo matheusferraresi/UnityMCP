@@ -1,7 +1,7 @@
-# Unity MCP Competitor Analysis
+# Unixxty MCP Competitor Analysis
 
 **Last Updated**: February 2026
-**Purpose**: Comprehensive comparison of all Unity MCP implementations to inform our roadmap.
+**Purpose**: Comprehensive comparison of all Unixxty MCP implementations to inform our roadmap.
 
 ---
 
@@ -167,4 +167,4 @@ By this same counting method, our 52 tools would be **120+ capabilities**.
 3. **The "86 tools" claim is marketing** - Inflated counting of actions within tools
 4. **Connection stability is our biggest advantage** - Competitors' #1 bug category doesn't affect us
 5. **Gaps to fill**: Smart editing, compilation feedback, vision, hot reload, UGUI, type reflection
-6. **Commercial opportunity**: No Unity MCP combines our stability + tool count + the planned killer features
+6. **Commercial opportunity**: No Unixxty MCP combines our stability + tool count + the planned killer features

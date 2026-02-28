@@ -1,6 +1,6 @@
 using System;
 
-namespace UnityMCP.Editor
+namespace UnixxtyMCP.Editor
 {
     /// <summary>
     /// Provides metadata for a parameter of an MCP tool method.

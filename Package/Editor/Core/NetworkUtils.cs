@@ -1,4 +1,4 @@
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// Shared network utility methods used by multiple components.

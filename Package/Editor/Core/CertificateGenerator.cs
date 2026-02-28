@@ -6,7 +6,7 @@ using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// Generates or loads self-signed TLS certificates for the MCP proxy.
@@ -23,7 +23,7 @@ namespace UnityMCP.Editor.Core
         public static string GetCertDirectory()
         {
             string baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            return Path.Combine(baseDir, "UnityMCP");
+            return Path.Combine(baseDir, "UnixxtyMCP");
         }
 
         /// <summary>
@@ -113,7 +113,7 @@ namespace UnityMCP.Editor.Core
                 using (var rsa = RSA.Create(2048))
                 {
                     var request = new CertificateRequest(
-                        "CN=UnityMCP Local Server",
+                        "CN=UnixxtyMCP Local Server",
                         rsa,
                         HashAlgorithmName.SHA256,
                         RSASignaturePadding.Pkcs1);

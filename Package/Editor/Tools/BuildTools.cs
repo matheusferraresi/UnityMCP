@@ -5,9 +5,9 @@ using System.Linq;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
-using UnityMCP.Editor.Services;
+using UnixxtyMCP.Editor.Services;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tools for building Unity player builds.

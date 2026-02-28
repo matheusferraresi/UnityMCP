@@ -7,7 +7,7 @@ using System.Runtime.InteropServices;
 using HarmonyLib;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Utilities
+namespace UnixxtyMCP.Editor.Utilities
 {
     /// <summary>
     /// Runtime method patching utility using Harmony 2.x.

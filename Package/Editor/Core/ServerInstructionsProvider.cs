@@ -2,16 +2,16 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// Provides custom server instructions that get sent to AI clients on MCP initialization.
-    /// Instructions are loaded from Assets/UnityMCPInstructions.md or EditorPrefs fallback.
+    /// Instructions are loaded from Assets/UnixxtyMCPInstructions.md or EditorPrefs fallback.
     /// </summary>
     public static class ServerInstructionsProvider
     {
-        private const string InstructionsFilePath = "Assets/UnityMCPInstructions.md";
-        private const string EditorPrefsKey = "UnityMCP_ServerInstructions";
+        private const string InstructionsFilePath = "Assets/UnixxtyMCPInstructions.md";
+        private const string EditorPrefsKey = "UnixxtyMCP_ServerInstructions";
 
         /// <summary>
         /// Get the current server instructions. Prioritizes file-based instructions,

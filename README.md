@@ -1,4 +1,4 @@
-# Unity MCP - AI Assistant Integration for Unity Editor
+# Unixxty MCP - AI Assistant Integration for Unity Editor
 
 ![Unity 2022.3+](https://img.shields.io/badge/Unity-2022.3%2B-black?logo=unity)
 ![Unity 6 Compatible](https://img.shields.io/badge/Unity%206-Compatible-brightgreen?logo=unity)
@@ -80,7 +80,7 @@ Restart Claude Desktop after saving.
 
 ### Other MCP Clients (Codex, Cursor, etc.)
 
-Unity MCP runs a built-in HTTP server at `http://localhost:8080/`. Any MCP-compatible client with HTTP transport support can connect directly. For stdio-only clients, use the mcp-remote bridge as shown above.
+Unixxty MCP runs a built-in HTTP server at `http://localhost:8080/`. Any MCP-compatible client with HTTP transport support can connect directly. For stdio-only clients, use the mcp-remote bridge as shown above.
 
 *Note: Configurations for clients other than Claude Code have not been tested. Open a PR!*
 
@@ -88,9 +88,9 @@ Unity MCP runs a built-in HTTP server at `http://localhost:8080/`. Any MCP-compa
 
 ### Editor Window
 
-Open the Unity MCP control panel from **Window > Unity MCP**:
+Open the Unixxty MCP control panel from **Window > Unixxty MCP**:
 
-<img src=".github/editor-window.png" alt="Unity MCP Editor Window" width="400">
+<img src=".github/editor-window.png" alt="Unixxty MCP Editor Window" width="400">
 
 - **Start/Stop** the MCP server
 - **View registered tools** organized by category with foldout groups
@@ -112,14 +112,14 @@ Toggle **Verbose Logging** in the editor window to enable detailed debug output 
 
 ### Remote Access
 
-Enable remote access to allow AI assistants to connect to Unity MCP from other devices on your network:
+Enable remote access to allow AI assistants to connect to Unixxty MCP from other devices on your network:
 
 - **Toggle remote access** in the editor window to enable binding to all network interfaces (0.0.0.0)
-- **Requires TLS** - Unity MCP automatically generates a self-signed certificate for secure connections
+- **Requires TLS** - Unixxty MCP automatically generates a self-signed certificate for secure connections
 - **API key authentication** - An API key (prefix `umcp_`) is auto-generated on first enable and required for all requests
 - **Copy or regenerate** the API key directly from the editor window
 - **Endpoint changes** to `https://<LAN_IP>:<port>/` when remote access is enabled
-- **Certificate storage** - Certificate is stored in `LocalApplicationData/UnityMCP/` and auto-regenerates if your LAN IP changes
+- **Certificate storage** - Certificate is stored in `LocalApplicationData/UnixxtyMCP/` and auto-regenerates if your LAN IP changes
 - **Firewall configuration** is the user's responsibility - you may need to allow incoming connections on the configured port
 
 #### Claude Code Remote Setup
@@ -331,7 +331,7 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 
 ## Architecture
 
-Unity MCP is entirely self-contained within the Unity Editor. A native C plugin runs the HTTP server on a background thread and persists across Unity domain reloads, so the AI assistant connection stays active even while Unity recompiles scripts. No external processes, runtimes, or sidecar applications are needed.
+Unixxty MCP is entirely self-contained within the Unity Editor. A native C plugin runs the HTTP server on a background thread and persists across Unity domain reloads, so the AI assistant connection stays active even while Unity recompiles scripts. No external processes, runtimes, or sidecar applications are needed.
 
 ```
 ┌─────────────────┐
@@ -359,7 +359,7 @@ Unity MCP is entirely self-contained within the Unity Editor. A native C plugin 
 
 **During script recompilation**, the C# polling stops and the plugin holds incoming requests until the domain reload completes. The AI assistant sees a brief delay rather than a disconnection.
 
-## Extending Unity MCP
+## Extending Unixxty MCP
 
 ### Adding Custom Tools
 
@@ -369,7 +369,7 @@ Unity MCP is entirely self-contained within the Unity Editor. A native C plugin 
 Create a static method and mark it with `[MCPTool]`:
 
 ```csharp
-using UnityMCP.Editor;
+using UnixxtyMCP.Editor;
 using UnityEngine;
 
 public static class MyCustomTools
@@ -440,7 +440,7 @@ Constraints are included in the JSON Schema sent to AI assistants:
 Resources expose read-only data to AI assistants. Use `[MCPResource]`:
 
 ```csharp
-using UnityMCP.Editor;
+using UnixxtyMCP.Editor;
 using UnityEngine;
 
 public static class MyCustomResources
@@ -475,8 +475,8 @@ Prompts provide reusable workflow templates for AI assistants. Use `[MCPPrompt]`
 
 ```csharp
 using System.Collections.Generic;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
 
 public static class MyCustomPrompts
 {

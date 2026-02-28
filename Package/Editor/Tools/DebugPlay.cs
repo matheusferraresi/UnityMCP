@@ -4,9 +4,9 @@ using System.Linq;
 using System.Reflection;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Automated play mode testing. Enter play mode, wait for a condition,
@@ -446,7 +446,7 @@ namespace UnityMCP.Editor.Tools
 
     public static class DebugPlayJobManager
     {
-        private const string SessionStateKey = "UnityMCP.DebugPlayJobManager.Jobs";
+        private const string SessionStateKey = "UnixxtyMCP.DebugPlayJobManager.Jobs";
         private static DebugPlayJob _currentJob;
         private static DebugPlayJobStorage _storage;
 

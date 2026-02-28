@@ -68,13 +68,13 @@ jobs:
           cd Proxy~
           gcc -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
             proxy.c mongoose.c \
-            -o UnityMCPProxy.dll \
+            -o UnixxtyMCPProxy.dll \
             -lws2_32
 
       - uses: actions/upload-artifact@v4
         with:
           name: windows-plugin
-          path: Proxy~/UnityMCPProxy.dll
+          path: Proxy~/UnixxtyMCPProxy.dll
 
   build-macos:
     needs: [version]
@@ -87,14 +87,14 @@ jobs:
           cd Proxy~
           clang -shared -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
             proxy.c mongoose.c \
-            -o UnityMCPProxy.bundle \
+            -o UnixxtyMCPProxy.bundle \
             -arch arm64 -arch x86_64 \
             -framework CoreFoundation -framework Security
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos-plugin
-          path: Proxy~/UnityMCPProxy.bundle
+          path: Proxy~/UnixxtyMCPProxy.bundle
 
   build-linux:
     needs: [version]
@@ -107,13 +107,13 @@ jobs:
           cd Proxy~
           gcc -shared -fPIC -O2 -DNDEBUG -DMG_ENABLE_LINES=0 -DMG_TLS=MG_TLS_BUILTIN \
             proxy.c mongoose.c \
-            -o libUnityMCPProxy.so \
+            -o libUnixxtyMCPProxy.so \
             -lpthread
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux-plugin
-          path: Proxy~/libUnityMCPProxy.so
+          path: Proxy~/libUnixxtyMCPProxy.so
 
   release:
     needs: [version, build-windows, build-macos, build-linux]

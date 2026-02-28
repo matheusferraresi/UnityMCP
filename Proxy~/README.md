@@ -1,6 +1,6 @@
-# UnityMCP Proxy Plugin
+# UnixxtyMCP Proxy Plugin
 
-C source code for UnityMCP's domain-reload-resistant HTTP server.
+C source code for UnixxtyMCP's domain-reload-resistant HTTP server.
 
 ## Purpose
 
@@ -15,7 +15,7 @@ The `~` suffix in `Proxy~` tells Unity to ignore this folder entirely. Unity wil
 ## Contents
 
 - `mongoose.c` / `mongoose.h` - The Mongoose embedded HTTP library (https://github.com/cesanta/mongoose)
-- `proxy.c` / `proxy.h` - UnityMCP proxy server implementation
+- `proxy.c` / `proxy.h` - UnixxtyMCP proxy server implementation
 
 ## Build Instructions
 

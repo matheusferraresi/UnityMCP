@@ -6,7 +6,7 @@ using UnityEditor.SceneManagement;
 using UnityEditor.TestTools.TestRunner.Api;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Services
+namespace UnixxtyMCP.Editor.Services
 {
     /// <summary>
     /// Test mode for running tests.

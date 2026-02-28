@@ -1,8 +1,8 @@
-# UnityMCP Roadmap
+# UnixxtyMCP Roadmap
 
 **Last Updated**: February 2026
 **Current Version**: 52 tools + 28 resources
-**Goal**: Build the most powerful Unity MCP with killer features no competitor has
+**Goal**: Build the most powerful Unixxty MCP with killer features no competitor has
 
 ---
 
@@ -319,7 +319,7 @@ var rt = sceneView.camera.targetTexture;
 
 **What**: Per-project instructions sent to AI on MCP handshake.
 
-**Implementation**: Read from `Assets/UnityMCPInstructions.md` or EditorPrefs. Include in MCP `initialize` response per spec.
+**Implementation**: Read from `Assets/UnixxtyMCPInstructions.md` or EditorPrefs. Include in MCP `initialize` response per spec.
 
 ---
 

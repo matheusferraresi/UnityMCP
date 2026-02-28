@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools.VFX
+namespace UnixxtyMCP.Editor.Tools.VFX
 {
     /// <summary>
     /// TrailRenderer operations for manage_vfx tool.

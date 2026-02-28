@@ -1,9 +1,9 @@
 using System.Linq;
 using UnityEditorInternal;
 using UnityEngine;
-using UnityMCP.Editor.Utilities;
+using UnixxtyMCP.Editor.Utilities;
 
-namespace UnityMCP.Editor.Resources.Project
+namespace UnixxtyMCP.Editor.Resources.Project
 {
     /// <summary>
     /// Resource provider for project layers.

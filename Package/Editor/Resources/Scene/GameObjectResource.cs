@@ -6,7 +6,7 @@ using UnityEngine;
 
 #pragma warning disable CS0618 // EditorUtility.InstanceIDToObject is deprecated but still functional
 
-namespace UnityMCP.Editor.Resources.Scene
+namespace UnixxtyMCP.Editor.Resources.Scene
 {
     /// <summary>
     /// Resource provider for GameObject details accessed by instance ID.

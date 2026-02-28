@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEngine;
 using Unity.Profiling;
 
-namespace UnityMCP.Editor.Services
+namespace UnixxtyMCP.Editor.Services
 {
     /// <summary>
     /// Status of a profiler job.
@@ -283,7 +283,7 @@ namespace UnityMCP.Editor.Services
     /// </summary>
     public static class ProfilerJobManager
     {
-        private const string SessionStateKey = "UnityMCP.ProfilerJobManager.Jobs";
+        private const string SessionStateKey = "UnixxtyMCP.ProfilerJobManager.Jobs";
         private const int MaxJobsToKeep = 5;
         private static readonly object LockObject = new object();
 

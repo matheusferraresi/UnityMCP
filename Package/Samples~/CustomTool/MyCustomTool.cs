@@ -1,12 +1,12 @@
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
 namespace MyProject.Editor.Tools
 {
     /// <summary>
     /// Example: Create your own MCP tool using [MCPTool] and [MCPParam] attributes.
     /// Place this script anywhere in an Editor/ folder or an Editor-only assembly.
-    /// Unity MCP will auto-discover it on the next domain reload.
+    /// Unixxty MCP will auto-discover it on the next domain reload.
     /// </summary>
     public static class MyCustomTool
     {
@@ -17,7 +17,7 @@ namespace MyProject.Editor.Tools
             [MCPParam("shout", "Whether to shout the greeting")] bool shout = false,
             [MCPParam("repeat", "How many times to repeat")] int repeat = 1)
         {
-            string greeting = $"Hello, {name}! Welcome to Unity MCP.";
+            string greeting = $"Hello, {name}! Welcome to Unixxty MCP.";
             if (shout)
                 greeting = greeting.ToUpper();
 

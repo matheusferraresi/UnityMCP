@@ -1,5 +1,5 @@
 /*
- * UnityMCP Proxy - Header
+ * UnixxtyMCP Proxy - Header
  *
  * HTTP server plugin that survives Unity domain reloads.
  * Acts as a proxy between external MCP clients and Unity's C# code.

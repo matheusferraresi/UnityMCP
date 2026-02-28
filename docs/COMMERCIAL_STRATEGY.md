@@ -1,4 +1,4 @@
-# UnityMCP Commercial Strategy
+# UnixxtyMCP Commercial Strategy
 
 **Last Updated**: February 2026
 **Purpose**: Research and planning for Unity Asset Store commercialization.
@@ -7,7 +7,7 @@
 
 ## Market Analysis
 
-### Current Unity MCP Landscape
+### Current Unixxty MCP Landscape
 
 | Product | Price | Tools | External Runtime | Stars/Downloads |
 |---------|-------|-------|-----------------|-----------------|
@@ -42,11 +42,11 @@ We solve ALL of these.
 
 ### Our Unique Value Proposition
 
-> **"The only Unity MCP that runs entirely inside the editor, survives domain reloads, and lets AI hot-patch your game while it's running."**
+> **"The only Unixxty MCP that runs entirely inside the editor, survives domain reloads, and lets AI hot-patch your game while it's running."**
 
 ### Feature Matrix for Marketing
 
-| Feature | Free MCPs | Hot Reload ($50) | **UnityMCP Pro** |
+| Feature | Free MCPs | Hot Reload ($50) | **UnixxtyMCP Pro** |
 |---------|-----------|------------------|-----------------|
 | 60+ MCP Tools | ❌ (20-34) | ❌ (0) | ✅ |
 | Zero Setup | ❌ | ✅ | ✅ |
@@ -92,17 +92,17 @@ We solve ALL of these.
 
 ### Name Ideas
 1. **"MCP Studio for Unity"** - Professional, clear
-2. **"AI Forge - Unity MCP Bridge"** - Catchy
-3. **"Unity MCP Pro"** - Direct
+2. **"AI Forge - Unixxty MCP Bridge"** - Catchy
+3. **"Unixxty MCP Pro"** - Direct
 4. **"Claude Unity Bridge"** - Too specific to one AI
 5. **"GameDev AI Tools"** - Too generic
 
-**Recommendation**: **"MCP Studio"** or **"Unity MCP Pro"**
+**Recommendation**: **"MCP Studio"** or **"Unixxty MCP Pro"**
 
 ### Key Selling Points (Asset Store description)
 
 1. **Zero Setup** - Install the package, connect your AI. No Python, no Node.js, no terminal commands.
-2. **60+ Tools** - The most comprehensive Unity MCP available. Manage scenes, GameObjects, scripts, animations, materials, UI, builds, tests, and more.
+2. **60+ Tools** - The most comprehensive Unixxty MCP available. Manage scenes, GameObjects, scripts, animations, materials, UI, builds, tests, and more.
 3. **AI Hot Reload** - Edit code during Play Mode and see changes instantly. No domain reload, no restart.
 4. **AI Vision** - Your AI assistant can SEE your game through screenshots. Debug visual issues with multimodal models.
 5. **Smart Editing** - Diff-based script editing that validates before compiling. No more broken scripts.
@@ -138,7 +138,7 @@ We solve ALL of these.
 
 ### Growth Drivers
 1. AI-assisted game development is exploding (2025-2026 trend)
-2. Unity MCP is becoming standard workflow
+2. Unixxty MCP is becoming standard workflow
 3. Claude Code / Cursor adoption growing rapidly
 4. No serious paid competitor in MCP space
 5. Hot reload integration is unique
@@ -196,7 +196,7 @@ We solve ALL of these.
 - Keep core fork open source (52 tools) - drives adoption
 - Pro features are closed source add-on
 - Accept community contributions to core
-- Build reputation as the "serious" Unity MCP
+- Build reputation as the "serious" Unixxty MCP
 
 ### Documentation
 - Comprehensive tool reference with examples

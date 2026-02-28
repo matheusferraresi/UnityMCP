@@ -5,7 +5,7 @@ using UnityEditor;
 using UnityEditor.Build.Reporting;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Services
+namespace UnixxtyMCP.Editor.Services
 {
     /// <summary>
     /// Status of a build job.
@@ -338,7 +338,7 @@ namespace UnityMCP.Editor.Services
     /// </summary>
     public static class BuildJobManager
     {
-        private const string SessionStateKey = "UnityMCP.BuildJobManager.Jobs";
+        private const string SessionStateKey = "UnixxtyMCP.BuildJobManager.Jobs";
         private const int MaxJobsToKeep = 5;
         private static readonly object LockObject = new object();
 

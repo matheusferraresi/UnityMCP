@@ -6,9 +6,9 @@ using System.Text.RegularExpressions;
 using Newtonsoft.Json;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Utilities;
+using UnixxtyMCP.Editor.Utilities;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// Registry for discovering and invoking MCP resources marked with [MCPResource] attribute.

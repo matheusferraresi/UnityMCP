@@ -1,4 +1,4 @@
-namespace UnityMCP.Editor.Utilities
+namespace UnixxtyMCP.Editor.Utilities
 {
     /// <summary>
     /// Provides commonly used Unity-related constants.

@@ -1,7 +1,7 @@
 using System;
 using UnityEditor;
 
-namespace UnityMCP.Editor.Utilities
+namespace UnixxtyMCP.Editor.Utilities
 {
     /// <summary>
     /// Provides utility methods for normalizing and managing Unity asset paths.

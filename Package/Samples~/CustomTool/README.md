@@ -4,8 +4,8 @@ This sample shows how to create your own MCP tool that AI assistants can invoke.
 
 ## Setup
 
-1. Import this sample via Package Manager > Unity MCP > Samples > Custom Tool Example
-2. The tool is automatically discovered by Unity MCP on domain reload
+1. Import this sample via Package Manager > Unixxty MCP > Samples > Custom Tool Example
+2. The tool is automatically discovered by Unixxty MCP on domain reload
 3. Ask your AI assistant to call `my_tool` with a name parameter
 
 ## How It Works

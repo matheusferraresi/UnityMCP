@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Reflection;
 using UnityEditor;
 
-namespace UnityMCP.Editor.Resources.Console
+namespace UnixxtyMCP.Editor.Resources.Console
 {
     /// <summary>
     /// Resource provider for detailed console error information.

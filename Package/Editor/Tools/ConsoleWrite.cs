@@ -1,9 +1,9 @@
 using System;
 using System.Reflection;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Writes messages to the Unity Console or clears it.

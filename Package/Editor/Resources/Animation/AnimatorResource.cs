@@ -4,7 +4,7 @@ using UnityEditor;
 using UnityEditor.Animations;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Resources.Animation
+namespace UnixxtyMCP.Editor.Resources.Animation
 {
     /// <summary>
     /// Resource provider for AnimatorController assets.

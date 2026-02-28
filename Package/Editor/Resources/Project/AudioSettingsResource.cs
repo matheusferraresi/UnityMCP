@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Resources.Project
+namespace UnixxtyMCP.Editor.Resources.Project
 {
     /// <summary>
     /// Resource provider for audio settings.

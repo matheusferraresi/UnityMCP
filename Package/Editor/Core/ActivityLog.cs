@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 
-namespace UnityMCP.Editor.Core
+namespace UnixxtyMCP.Editor.Core
 {
     /// <summary>
     /// Records tool invocations for display in the MCP server window.

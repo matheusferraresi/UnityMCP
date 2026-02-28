@@ -5,10 +5,10 @@ using System.Linq;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.Rendering;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Utilities;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Utilities;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tool for managing materials: create, modify properties, and assign to renderers.

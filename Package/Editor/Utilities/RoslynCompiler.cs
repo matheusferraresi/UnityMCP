@@ -6,7 +6,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Utilities
+namespace UnixxtyMCP.Editor.Utilities
 {
     /// <summary>
     /// Dynamically loads Roslyn from Unity's editor installation and compiles C# code at runtime.

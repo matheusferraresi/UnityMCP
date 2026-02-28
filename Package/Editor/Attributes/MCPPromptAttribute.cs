@@ -1,6 +1,6 @@
 using System;
 
-namespace UnityMCP.Editor
+namespace UnixxtyMCP.Editor
 {
     /// <summary>
     /// Marks a static method as an MCP prompt provider.

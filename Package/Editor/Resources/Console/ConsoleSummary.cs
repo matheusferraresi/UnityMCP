@@ -2,7 +2,7 @@ using System;
 using System.Reflection;
 using UnityEditor;
 
-namespace UnityMCP.Editor.Resources.Console
+namespace UnixxtyMCP.Editor.Resources.Console
 {
     /// <summary>
     /// Resource provider for console log summary information.

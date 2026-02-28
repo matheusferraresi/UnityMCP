@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.UI
+namespace UnixxtyMCP.Editor.UI
 {
     /// <summary>
     /// Editor window for controlling the MCP server and viewing its status.
@@ -22,13 +22,13 @@ namespace UnityMCP.Editor.UI
         private bool _activityFoldout = true;
 
         private const string DocumentationUrl = "https://github.com/anthropics/anthropic-cookbook/tree/main/misc/model_context_protocol";
-        private const string VerboseLoggingPrefKey = "UnityMCP_VerboseLogging";
-        private const string ActivityDetailPrefKey = "UnityMCP_ActivityDetail";
+        private const string VerboseLoggingPrefKey = "UnixxtyMCP_VerboseLogging";
+        private const string ActivityDetailPrefKey = "UnixxtyMCP_ActivityDetail";
 
-        [MenuItem("Window/Unity MCP")]
+        [MenuItem("Window/Unixxty MCP")]
         public static void ShowWindow()
         {
-            var window = GetWindow<MCPServerWindow>("Unity MCP");
+            var window = GetWindow<MCPServerWindow>("Unixxty MCP");
             window.minSize = new Vector2(300, 400);
         }
 

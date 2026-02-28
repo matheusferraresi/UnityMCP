@@ -6,13 +6,13 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Utilities;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Utilities;
 
 #pragma warning disable CS0618 // EditorUtility.InstanceIDToObject is deprecated but still functional
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Handles scene management operations like loading, saving, creating, and querying hierarchy.

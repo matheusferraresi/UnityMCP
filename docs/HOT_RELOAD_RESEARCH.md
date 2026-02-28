@@ -7,7 +7,7 @@
 
 ## The Opportunity
 
-No Unity MCP has AI-integrated hot reload. The workflow today:
+No Unixxty MCP has AI-integrated hot reload. The workflow today:
 
 ```
 Agent edits script → Unity recompiles (2-10s) → Domain reload (5-30s) → Play mode restarts → Test again

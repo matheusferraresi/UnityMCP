@@ -1,7 +1,7 @@
 using System.Linq;
 using UnityEditorInternal;
 
-namespace UnityMCP.Editor.Resources.Project
+namespace UnixxtyMCP.Editor.Resources.Project
 {
     /// <summary>
     /// Resource provider for project tags.

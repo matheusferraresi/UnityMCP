@@ -1,6 +1,6 @@
 using Newtonsoft.Json;
 
-namespace UnityMCP.Editor.Utilities
+namespace UnixxtyMCP.Editor.Utilities
 {
     /// <summary>
     /// Provides cached JSON serialization settings for consistent serialization across the application.

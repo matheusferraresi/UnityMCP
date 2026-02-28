@@ -1,8 +1,8 @@
 using System;
 using UnityEngine;
-using UnityMCP.Editor.Services;
+using UnixxtyMCP.Editor.Services;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tools for profiling Unity Editor and runtime performance.

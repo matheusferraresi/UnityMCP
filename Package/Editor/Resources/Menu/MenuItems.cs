@@ -4,7 +4,7 @@ using System.Linq;
 using System.Reflection;
 using UnityEditor;
 
-namespace UnityMCP.Editor.Resources.Menu
+namespace UnixxtyMCP.Editor.Resources.Menu
 {
     /// <summary>
     /// Resource provider for available Unity Editor menu items.

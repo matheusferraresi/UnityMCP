@@ -8,15 +8,15 @@ using System.Text.RegularExpressions;
 using HarmonyLib;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Utilities;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Utilities;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Play Mode method-level hot reload using Harmony 2.x.
     ///
-    /// THE killer feature - NO other Unity MCP has this.
+    /// THE killer feature - NO other Unixxty MCP has this.
     ///
     /// Flow: Agent edits method → hot_patch applies in-memory via Harmony → game continues running.
     /// Patches revert on exiting play mode.

@@ -1,6 +1,6 @@
 using System.Linq;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
 namespace MyProject.Editor.Resources
 {

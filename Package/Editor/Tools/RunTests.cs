@@ -1,11 +1,11 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Services;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Services;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tool for starting asynchronous Unity test runs.

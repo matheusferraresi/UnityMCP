@@ -3,9 +3,9 @@ using System.Collections.Generic;
 using System.Linq;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools.VFX
+namespace UnixxtyMCP.Editor.Tools.VFX
 {
     /// <summary>
     /// LineRenderer operations for manage_vfx tool.

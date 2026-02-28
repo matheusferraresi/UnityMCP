@@ -1,7 +1,7 @@
 using UnityEditor;
 using UnityEngine;
 
-namespace UnityMCP.Editor.Resources.Editor
+namespace UnixxtyMCP.Editor.Resources.Editor
 {
     /// <summary>
     /// Resource provider for the current editor state.

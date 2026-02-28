@@ -1,9 +1,9 @@
 using System;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
-using UnityMCP.Editor.Services;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Services;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Tool for polling the status of asynchronous test jobs.

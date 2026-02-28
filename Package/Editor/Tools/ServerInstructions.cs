@@ -2,14 +2,14 @@ using System;
 using System.IO;
 using UnityEditor;
 using UnityEngine;
-using UnityMCP.Editor;
-using UnityMCP.Editor.Core;
+using UnixxtyMCP.Editor;
+using UnixxtyMCP.Editor.Core;
 
-namespace UnityMCP.Editor.Tools
+namespace UnixxtyMCP.Editor.Tools
 {
     /// <summary>
     /// Manages custom server instructions sent to AI clients on MCP initialization.
-    /// Instructions can be stored in a file (Assets/UnityMCPInstructions.md) or via EditorPrefs.
+    /// Instructions can be stored in a file (Assets/UnixxtyMCPInstructions.md) or via EditorPrefs.
     /// </summary>
     public static class ServerInstructions
     {
@@ -46,7 +46,7 @@ namespace UnityMCP.Editor.Tools
             bool fileExists = File.Exists(fullPath);
 
             string current = ServerInstructionsProvider.GetInstructions();
-            string editorPrefs = EditorPrefs.GetString("UnityMCP_ServerInstructions", "");
+            string editorPrefs = EditorPrefs.GetString("UnixxtyMCP_ServerInstructions", "");
 
             return new
             {
