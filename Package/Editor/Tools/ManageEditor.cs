@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using System.Runtime.InteropServices;
 using UnityEditor;
 using UnityEditorInternal;
 using UnityEngine;
@@ -14,6 +15,28 @@ namespace UnixxtyMCP.Editor.Tools
         private const int FirstUserLayerIndex = 8;
         private const int TotalLayerCount = 32;
 
+        #region Window Focus P/Invoke (Windows only)
+
+#if UNITY_EDITOR_WIN
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+        private const int SW_RESTORE = 9;
+        private const int SW_SHOW = 5;
+#endif
+
+        private static IntPtr _previousForegroundWindow = IntPtr.Zero;
+        private const string AutoFocusPrefKey = "UnixxtyMCP_AutoFocus";
+
+        #endregion
+
         /// <summary>
         /// Valid editor tools that can be selected.
         /// </summary>
@@ -27,12 +50,17 @@ namespace UnixxtyMCP.Editor.Tools
         /// <param name="tagName">Tag name for add_tag/remove_tag</param>
         /// <param name="layerName">Layer name for add_layer/remove_layer</param>
         /// <returns>Result object indicating success or failure with appropriate message.</returns>
-        [MCPTool("manage_editor", "Manage editor state, tags, layers, and tools", Category = "Editor", DestructiveHint = true)]
+        [MCPTool("manage_editor", "Manage editor state, tags, layers, tools, and window focus", Category = "Editor", DestructiveHint = true)]
         public static object Execute(
-            [MCPParam("action", "Action: play, pause, stop, set_active_tool, add_tag, remove_tag, add_layer, remove_layer", required: true, Enum = new[] { "play", "pause", "stop", "set_active_tool", "add_tag", "remove_tag", "add_layer", "remove_layer" })] string action,
+            [MCPParam("action", "Action to perform", required: true,
+                Enum = new[] { "play", "pause", "stop", "set_active_tool",
+                               "add_tag", "remove_tag", "add_layer", "remove_layer",
+                               "focus", "restore_focus", "set_auto_focus", "get_settings" })]
+            string action,
             [MCPParam("tool_name", "Tool name for set_active_tool: View, Move, Rotate, Scale, Rect, Transform")] string toolName = null,
             [MCPParam("tag_name", "Tag name for add_tag/remove_tag")] string tagName = null,
-            [MCPParam("layer_name", "Layer name for add_layer/remove_layer")] string layerName = null)
+            [MCPParam("layer_name", "Layer name for add_layer/remove_layer")] string layerName = null,
+            [MCPParam("enabled", "Boolean for set_auto_focus (true/false)")] bool enabled = false)
         {
             if (string.IsNullOrWhiteSpace(action))
             {
@@ -57,10 +85,14 @@ namespace UnixxtyMCP.Editor.Tools
                     "remove_tag" => HandleRemoveTag(tagName),
                     "add_layer" => HandleAddLayer(layerName),
                     "remove_layer" => HandleRemoveLayer(layerName),
+                    "focus" => HandleFocus(),
+                    "restore_focus" => HandleRestoreFocus(),
+                    "set_auto_focus" => HandleSetAutoFocus(enabled),
+                    "get_settings" => HandleGetSettings(),
                     _ => new
                     {
                         success = false,
-                        error = $"Unknown action: '{action}'. Valid actions are: play, pause, stop, set_active_tool, add_tag, remove_tag, add_layer, remove_layer."
+                        error = $"Unknown action: '{action}'. Valid actions are: play, pause, stop, set_active_tool, add_tag, remove_tag, add_layer, remove_layer, focus, restore_focus, set_auto_focus, get_settings."
                     }
                 };
             }
@@ -574,6 +606,151 @@ namespace UnixxtyMCP.Editor.Tools
             }
 
             return layers.ToArray();
+        }
+
+        #endregion
+
+        #region Window Focus Management
+
+        private static object HandleFocus()
+        {
+#if UNITY_EDITOR_WIN
+            try
+            {
+                _previousForegroundWindow = GetForegroundWindow();
+                var unityHwnd = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
+
+                if (unityHwnd == IntPtr.Zero)
+                {
+                    return new { success = false, error = "Could not get Unity window handle." };
+                }
+
+                ShowWindow(unityHwnd, SW_RESTORE);
+                bool focused = SetForegroundWindow(unityHwnd);
+
+                return new
+                {
+                    success = true,
+                    focused,
+                    previous_window_saved = _previousForegroundWindow != IntPtr.Zero,
+                    message = focused
+                        ? "Unity Editor focused. Use 'restore_focus' to return to previous window."
+                        : "Focus request sent but may not have succeeded (Windows restrictions)."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new { success = false, error = $"Failed to focus Unity: {ex.Message}" };
+            }
+#else
+            return new { success = false, error = "Window focus management is only supported on Windows." };
+#endif
+        }
+
+        private static object HandleRestoreFocus()
+        {
+#if UNITY_EDITOR_WIN
+            try
+            {
+                if (_previousForegroundWindow == IntPtr.Zero)
+                {
+                    return new
+                    {
+                        success = false,
+                        error = "No previous window saved. Call 'focus' first to save the previous window."
+                    };
+                }
+
+                ShowWindow(_previousForegroundWindow, SW_SHOW);
+                bool restored = SetForegroundWindow(_previousForegroundWindow);
+                var savedHwnd = _previousForegroundWindow;
+                _previousForegroundWindow = IntPtr.Zero;
+
+                return new
+                {
+                    success = true,
+                    restored,
+                    message = restored
+                        ? "Focus restored to previous window."
+                        : "Restore request sent but may not have succeeded (Windows restrictions)."
+                };
+            }
+            catch (Exception ex)
+            {
+                return new { success = false, error = $"Failed to restore focus: {ex.Message}" };
+            }
+#else
+            return new { success = false, error = "Window focus management is only supported on Windows." };
+#endif
+        }
+
+        private static object HandleSetAutoFocus(bool enabled)
+        {
+            EditorPrefs.SetBool(AutoFocusPrefKey, enabled);
+            return new
+            {
+                success = true,
+                auto_focus = enabled,
+                message = enabled
+                    ? "Auto-focus enabled. Unity will be focused automatically when needed."
+                    : "Auto-focus disabled."
+            };
+        }
+
+        private static object HandleGetSettings()
+        {
+            return new
+            {
+                success = true,
+                auto_focus = EditorPrefs.GetBool(AutoFocusPrefKey, false),
+                has_previous_window = _previousForegroundWindow != IntPtr.Zero,
+                platform = "windows"
+            };
+        }
+
+        /// <summary>
+        /// Public helper: checks if auto-focus is enabled. Other tools can call this.
+        /// </summary>
+        public static bool IsAutoFocusEnabled => EditorPrefs.GetBool(AutoFocusPrefKey, false);
+
+        /// <summary>
+        /// Public helper: focus Unity and save previous window. Other tools can call this.
+        /// </summary>
+        public static void AutoFocusIfEnabled()
+        {
+            if (!IsAutoFocusEnabled) return;
+#if UNITY_EDITOR_WIN
+            try
+            {
+                _previousForegroundWindow = GetForegroundWindow();
+                var unityHwnd = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
+                if (unityHwnd != IntPtr.Zero)
+                {
+                    ShowWindow(unityHwnd, SW_RESTORE);
+                    SetForegroundWindow(unityHwnd);
+                }
+            }
+            catch { }
+#endif
+        }
+
+        /// <summary>
+        /// Public helper: restore focus to previous window. Other tools can call this.
+        /// </summary>
+        public static void RestoreFocusIfSaved()
+        {
+#if UNITY_EDITOR_WIN
+            try
+            {
+                if (_previousForegroundWindow != IntPtr.Zero)
+                {
+                    ShowWindow(_previousForegroundWindow, SW_SHOW);
+                    SetForegroundWindow(_previousForegroundWindow);
+                    _previousForegroundWindow = IntPtr.Zero;
+                }
+            }
+            catch { }
+#endif
         }
 
         #endregion
