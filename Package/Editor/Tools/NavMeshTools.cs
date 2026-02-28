@@ -1,3 +1,4 @@
+#if UNITY_MCP_AI_NAVIGATION
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -261,3 +262,4 @@ namespace UnixxtyMCP.Editor.Tools
         }
     }
 }
+#endif

@@ -25,6 +25,11 @@
             "name": "com.unity.inputsystem",
             "expression": "1.0.0",
             "define": "UNITY_MCP_INPUT_SYSTEM"
+        },
+        {
+            "name": "com.unity.ai.navigation",
+            "expression": "1.0.0",
+            "define": "UNITY_MCP_AI_NAVIGATION"
         }
     ],
     "noEngineReferences": false
