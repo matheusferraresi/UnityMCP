@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using System.Text;
 using System.Text.RegularExpressions;
-using HarmonyLib;
 using UnityEditor;
 using UnityEngine;
 using UnixxtyMCP.Editor.Core;
@@ -317,7 +316,7 @@ namespace UnixxtyMCP.Editor.Tools
                 success = true,
                 is_playing = EditorApplication.isPlaying,
                 harmony_available = MethodPatcher.IsHarmonyAvailable,
-                harmony_version = typeof(Harmony).Assembly.GetName().Version.ToString(),
+                harmony_version = MethodPatcher.HarmonyVersion,
                 roslyn_available = RoslynCompiler.IsAvailable,
                 roslyn_error = RoslynCompiler.LoadError,
                 patch_engine = "harmony",
