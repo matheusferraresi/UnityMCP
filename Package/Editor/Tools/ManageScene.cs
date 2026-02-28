@@ -515,7 +515,10 @@ namespace UnixxtyMCP.Editor.Tools
         /// <summary>
         /// Captures a screenshot of the Game View.
         /// </summary>
-        [MCPTool("scene_screenshot", "Captures a screenshot of the Game View", Category = "Scene", DestructiveHint = true)]
+        [MCPTool("scene_screenshot",
+            "Captures a screenshot of the Game View and saves to Assets/Screenshots/. Returns file path. " +
+            "For inline base64 (direct AI vision analysis) or Scene View capture, use vision_capture instead.",
+            Category = "Scene", DestructiveHint = true)]
         public static object CaptureScreenshot(
             [MCPParam("filename", "Filename for the screenshot (without extension)")] string filename = null,
             [MCPParam("super_size", "Multiplier for resolution (1-4, default: 1)", Minimum = 1, Maximum = 4)] int superSize = 1)

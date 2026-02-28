@@ -336,10 +336,23 @@ namespace UnixxtyMCP.Editor.Core
             }
             catch (Exception exception)
             {
-                string errorResponse = BuildErrorResponse(-32603, exception.Message, requestId);
+                string errorMessage;
+                bool isDomainReload = IsDomainReloadException(exception);
+
+                if (isDomainReload)
+                {
+                    errorMessage = "Request interrupted by Unity domain reload. This is recoverable — wait 2-3 seconds and retry. " +
+                        "Domain reloads occur after exiting play mode or script recompilation.";
+                }
+                else
+                {
+                    errorMessage = exception.Message;
+                }
+
+                string errorResponse = BuildErrorResponse(-32603, errorMessage, requestId);
                 SendResponse(errorResponse);
                 if (toolName != null)
-                    ActivityLog.Record(toolName, false, exception.Message);
+                    ActivityLog.Record(toolName, false, isDomainReload ? "Domain reload interrupted" : exception.Message);
             }
         }
 
@@ -508,6 +521,31 @@ namespace UnixxtyMCP.Editor.Core
         private static string BuildErrorResponse(int code, string message, string requestId)
         {
             return $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{code},\"message\":\"{EscapeJson(message)}\"}},\"id\":{requestId}}}";
+        }
+
+        /// <summary>
+        /// Detects whether an exception was caused by a Unity domain reload.
+        /// Common during play mode transitions and script recompilation.
+        /// </summary>
+        private static bool IsDomainReloadException(Exception exception)
+        {
+            if (exception == null) return false;
+
+            string message = exception.Message ?? "";
+            string typeName = exception.GetType().Name;
+
+            // ThreadAbortException is the classic domain reload signal
+            if (typeName == "ThreadAbortException") return true;
+
+            // Check for common domain reload error messages
+            if (message.Contains("domain reload", StringComparison.OrdinalIgnoreCase)) return true;
+            if (message.Contains("AppDomain", StringComparison.OrdinalIgnoreCase) && message.Contains("unload", StringComparison.OrdinalIgnoreCase)) return true;
+            if (message.Contains("assembly reload", StringComparison.OrdinalIgnoreCase)) return true;
+
+            // InvalidOperationException during play mode state change
+            if (exception is InvalidOperationException && EditorApplication.isCompiling) return true;
+
+            return false;
         }
 
         /// <summary>

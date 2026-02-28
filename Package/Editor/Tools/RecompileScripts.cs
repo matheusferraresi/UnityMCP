@@ -15,7 +15,10 @@ namespace UnixxtyMCP.Editor.Tools
     /// </summary>
     public static class RecompileScripts
     {
-        [MCPTool("recompile_scripts", "Force Unity to recompile all scripts and return compilation results",
+        [MCPTool("recompile_scripts",
+            "Force Unity to recompile all scripts and return compilation results. " +
+            "NOTE: Compilation is async — returned logs may be from a previous compilation. " +
+            "For reliable compilation tracking with structured errors, use compile_and_watch instead.",
             Category = "Editor", DestructiveHint = true)]
         public static object Execute(
             [MCPParam("return_logs", "Include compilation-related console logs in response (default: true)")] bool returnLogs = true,

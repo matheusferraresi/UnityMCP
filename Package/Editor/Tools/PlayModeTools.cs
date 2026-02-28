@@ -73,10 +73,14 @@ namespace UnixxtyMCP.Editor.Tools
         }
 
         /// <summary>
-        /// Exits play mode.
+        /// Exits play mode. Note: Unity triggers a domain reload after exiting play mode.
+        /// During the reload (~1-3 seconds), subsequent MCP calls may fail.
         /// </summary>
-        /// <returns>Result object with current play mode state.</returns>
-        [MCPTool("playmode_exit", "Exit play mode", Category = "Editor", DestructiveHint = true)]
+        /// <returns>Result object with current play mode state and reload warning.</returns>
+        [MCPTool("playmode_exit",
+            "Exit play mode. IMPORTANT: Unity performs a domain reload after exiting play mode (1-3 seconds). " +
+            "Wait at least 2 seconds before making the next MCP call, or poll editor://state until isCompiling is false.",
+            Category = "Editor", DestructiveHint = true)]
         public static object Exit()
         {
             try
@@ -88,7 +92,8 @@ namespace UnixxtyMCP.Editor.Tools
                         success = true,
                         message = "Already stopped (not in play mode).",
                         isPlaying = false,
-                        isPaused = false
+                        isPaused = false,
+                        domain_reload_pending = false
                     };
                 }
 
@@ -97,9 +102,11 @@ namespace UnixxtyMCP.Editor.Tools
                 return new
                 {
                     success = true,
-                    message = "Exiting play mode.",
+                    message = "Exiting play mode. Domain reload will occur — wait 2+ seconds before next MCP call, or poll editor://state.",
                     isPlaying = false,
-                    isPaused = false
+                    isPaused = false,
+                    domain_reload_pending = true,
+                    recommended_delay_ms = 2000
                 };
             }
             catch (Exception exception)
