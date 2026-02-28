@@ -26,7 +26,7 @@ namespace UnixxtyMCP.Editor.Utilities
             get
             {
                 if (_harmony == null)
-                    _harmony = new Harmony("com.unitymcp.hotpatch");
+                    _harmony = new Harmony("com.unixxtymcp.hotpatch");
                 return _harmony;
             }
         }
@@ -145,7 +145,7 @@ namespace UnixxtyMCP.Editor.Utilities
             {
                 if (record.engine == PatchEngine.Harmony)
                 {
-                    HarmonyInstance.Unpatch(record.original, HarmonyPatchType.All, "com.unitymcp.hotpatch");
+                    HarmonyInstance.Unpatch(record.original, HarmonyPatchType.All, "com.unixxtymcp.hotpatch");
                 }
                 else if (record.engine == PatchEngine.NativeRedirect && record.originalBytes != null)
                 {
@@ -173,7 +173,7 @@ namespace UnixxtyMCP.Editor.Utilities
             foreach (var id in patchIds)
                 UnpatchMethod(id);
 
-            try { HarmonyInstance.UnpatchAll("com.unitymcp.hotpatch"); } catch { }
+            try { HarmonyInstance.UnpatchAll("com.unixxtymcp.hotpatch"); } catch { }
 
             _activePatches.Clear();
             return count;
