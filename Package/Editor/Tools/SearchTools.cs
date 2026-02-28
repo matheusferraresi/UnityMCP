@@ -12,7 +12,8 @@ namespace UnixxtyMCP.Editor.Tools
         [MCPTool("search_tools", "Search available tools by name, description, or category. Use with no args for a category overview.", Category = "Editor", ReadOnlyHint = true)]
         public static object SearchAvailableTools(
             [MCPParam("query", "Search names and descriptions")] string query = null,
-            [MCPParam("category", "Filter by category")] string category = null)
+            [MCPParam("category", "Filter by category")] string category = null,
+            [MCPParam("include_schema", "Include inputSchema with parameter details (default: true)")] bool includeSchema = true)
         {
             bool hasQuery = !string.IsNullOrEmpty(query);
             bool hasCategory = !string.IsNullOrEmpty(category);
@@ -24,7 +25,7 @@ namespace UnixxtyMCP.Editor.Tools
             }
 
             // With category and/or query: return matching tool details
-            return BuildToolDetails(query, category);
+            return BuildToolDetails(query, category, includeSchema);
         }
 
         private static string BuildCategorySummary()
@@ -47,7 +48,7 @@ namespace UnixxtyMCP.Editor.Tools
             return summaryBuilder.ToString();
         }
 
-        private static object BuildToolDetails(string query, string category)
+        private static object BuildToolDetails(string query, string category, bool includeSchema)
         {
             var allDefinitions = ToolRegistry.GetDefinitions();
             var filteredDefinitions = allDefinitions;
@@ -101,6 +102,11 @@ namespace UnixxtyMCP.Editor.Tools
                     {
                         toolEntry["annotations"] = annotationsDict;
                     }
+                }
+
+                if (includeSchema && tool.inputSchema != null)
+                {
+                    toolEntry["inputSchema"] = tool.inputSchema;
                 }
 
                 toolEntries.Add(toolEntry);

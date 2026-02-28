@@ -45,7 +45,9 @@ namespace UnixxtyMCP.Editor.Tools
             [MCPParam("fit_mode", "Content size fitter mode for width/height: Unconstrained, MinSize, PreferredSize",
                 Enum = new[] { "Unconstrained", "MinSize", "PreferredSize" })] string fitMode = null,
             [MCPParam("raycast_target", "Whether this element blocks raycasts")] bool? raycastTarget = null,
-            [MCPParam("interactable", "Whether interactive elements are interactable")] bool? interactable = null)
+            [MCPParam("interactable", "Whether interactive elements are interactable")] bool? interactable = null,
+            [MCPParam("reference_resolution", "CanvasScaler reference resolution as [width,height] (e.g. [1920,1080]). Sets ScaleWithScreenSize mode.")] object referenceResolution = null,
+            [MCPParam("match_width_or_height", "CanvasScaler match mode (0=width, 1=height, 0.5=both)")] float? matchWidthOrHeight = null)
         {
             if (string.IsNullOrEmpty(action))
                 throw MCPException.InvalidParams("Action parameter is required.");
@@ -54,7 +56,7 @@ namespace UnixxtyMCP.Editor.Tools
             {
                 return action.ToLowerInvariant() switch
                 {
-                    "create_canvas" => CreateCanvas(name, canvasRenderMode),
+                    "create_canvas" => CreateCanvas(name, canvasRenderMode, referenceResolution, matchWidthOrHeight),
                     "add_element" => AddElement(parent, elementType, name, text, fontSize, color, spritePath, anchors, position, size, pivot, raycastTarget),
                     "modify_rect" => ModifyRect(target, anchors, position, size, pivot),
                     "add_layout" => AddLayout(target, layoutType, spacing, padding, childAlignment, cellSize, fitMode),
@@ -74,7 +76,7 @@ namespace UnixxtyMCP.Editor.Tools
 
         #region Actions
 
-        private static object CreateCanvas(string name, string renderMode)
+        private static object CreateCanvas(string name, string renderMode, object referenceResolution, float? matchWidthOrHeight)
         {
             name = name ?? "Canvas";
 
@@ -89,7 +91,17 @@ namespace UnixxtyMCP.Editor.Tools
                 _ => RenderMode.ScreenSpaceOverlay
             };
 
-            canvasGo.AddComponent<CanvasScaler>();
+            var scaler = canvasGo.AddComponent<CanvasScaler>();
+            if (referenceResolution != null)
+            {
+                scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+                var res = ParseVector2(referenceResolution);
+                if (res.HasValue) scaler.referenceResolution = res.Value;
+            }
+            if (matchWidthOrHeight.HasValue)
+            {
+                scaler.matchWidthOrHeight = matchWidthOrHeight.Value;
+            }
             canvasGo.AddComponent<GraphicRaycaster>();
 
             // Add EventSystem if none exists
@@ -677,15 +689,16 @@ namespace UnixxtyMCP.Editor.Tools
         {
             if (string.IsNullOrEmpty(identifier)) return null;
 
-            // Try instance ID
+            // Try instance ID first (fast path)
             if (int.TryParse(identifier, out int instanceId))
             {
                 var obj = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
                 return obj?.GetComponent<RectTransform>();
             }
 
-            // Try path/name search
-            var go = GameObject.Find(identifier);
+            // Use GameObjectResolver for robust name/path resolution
+            // (recursive name search, hierarchy paths, searches inactive objects)
+            var go = GameObjectResolver.Resolve(identifier);
             return go?.GetComponent<RectTransform>();
         }
 

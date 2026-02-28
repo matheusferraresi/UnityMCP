@@ -32,6 +32,7 @@ namespace UnixxtyMCP.Editor.Tools
             [MCPParam("action", "Action: create, modify, get, list", required: true, Enum = new[] { "create", "modify", "get", "list" })] string action,
             [MCPParam("type_name", "ScriptableObject type name (full or short)")] string typeName = null,
             [MCPParam("folder_path", "Folder path for create (e.g., Assets/Data)")] string folderPath = null,
+            [MCPParam("path", "Alias for folder_path (folder path for create)")] string path = null,
             [MCPParam("asset_name", "Asset file name (without .asset extension)")] string assetName = null,
             [MCPParam("asset_path", "Path to existing asset for modify/get")] string assetPath = null,
             [MCPParam("overwrite", "Overwrite existing asset (default: false)")] bool overwrite = false,
@@ -48,7 +49,7 @@ namespace UnixxtyMCP.Editor.Tools
             {
                 return normalizedAction switch
                 {
-                    "create" => HandleCreate(typeName, folderPath, assetName, overwrite, patches),
+                    "create" => HandleCreate(typeName, folderPath ?? path, assetName, overwrite, patches),
                     "modify" => HandleModify(assetPath, patches),
                     "get" => HandleGet(assetPath),
                     "list" => HandleList(typeName, folderPath),
