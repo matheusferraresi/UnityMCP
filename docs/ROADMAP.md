@@ -111,7 +111,7 @@ Scene state, project settings, console output, hierarchy, and more.
 
 Use **[Harmony](https://github.com/pardeike/Harmony)** (MIT license, v2.3+, ~200KB DLL):
 ```csharp
-var harmony = new Harmony("com.unitymcp.hotpatch");
+var harmony = new Harmony("com.unixxtymcp.hotpatch");
 var original = targetType.GetMethod("MethodName");
 var replacement = BuildReplacementMethod(newSourceCode);
 harmony.Patch(original, transpiler: new HarmonyMethod(replacement));

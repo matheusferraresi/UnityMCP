@@ -74,7 +74,7 @@ This is the single biggest productivity gain possible for AI-assisted Unity deve
 **How It Works**:
 ```csharp
 // 1. Create Harmony instance
-var harmony = new Harmony("com.unitymcp.hotpatch");
+var harmony = new Harmony("com.unixxtymcp.hotpatch");
 
 // 2. Get the original method
 var original = AccessTools.Method(typeof(PlayerController), "Update");
@@ -86,7 +86,7 @@ var transpiler = AccessTools.Method(typeof(HotPatcher), "TranspileMethod");
 harmony.Patch(original, transpiler: new HarmonyMethod(transpiler));
 
 // 5. Later, unpatch
-harmony.UnpatchAll("com.unitymcp.hotpatch");
+harmony.UnpatchAll("com.unixxtymcp.hotpatch");
 ```
 
 **Transpiler Example** (replace method body):
