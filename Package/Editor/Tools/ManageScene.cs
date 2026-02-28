@@ -291,7 +291,16 @@ namespace UnixxtyMCP.Editor.Tools
                             error = "Cannot save an untitled scene without providing a 'name'. Use Save As functionality."
                         };
                     }
+
+                    // Mark scene dirty to ensure SaveScene recognizes changes
+                    EditorSceneManager.MarkSceneDirty(currentScene);
                     saved = EditorSceneManager.SaveScene(currentScene);
+
+                    // If regular save fails, retry with explicit path
+                    if (!saved && !string.IsNullOrEmpty(currentScene.path))
+                    {
+                        saved = EditorSceneManager.SaveScene(currentScene, currentScene.path);
+                    }
                 }
 
                 if (saved)
@@ -310,7 +319,13 @@ namespace UnixxtyMCP.Editor.Tools
                     return new
                     {
                         success = false,
-                        error = $"Failed to save scene '{currentScene.name}'."
+                        error = $"Failed to save scene '{currentScene.name}'.",
+                        scene_path = currentScene.path,
+                        is_dirty = currentScene.isDirty,
+                        is_compiling = EditorApplication.isCompiling,
+                        hint = EditorApplication.isCompiling
+                            ? "Unity is compiling. Wait for compilation to finish and retry."
+                            : "Try providing explicit 'name' and 'path' parameters for Save As."
                     };
                 }
             }

@@ -901,7 +901,7 @@ namespace UnixxtyMCP.Editor.Tools
 
             try
             {
-                // Handle List<object> (from JSON array)
+                // Handle List<object> (from JSON array — most common path from MCP JSON-RPC)
                 if (input is List<object> list && list.Count >= 3)
                 {
                     return new Vector3(
@@ -911,7 +911,7 @@ namespace UnixxtyMCP.Editor.Tools
                     );
                 }
 
-                // Handle Dictionary<string, object> (from JSON object)
+                // Handle Dictionary<string, object> (from JSON object {x,y,z})
                 if (input is Dictionary<string, object> dict)
                 {
                     if (dict.TryGetValue("x", out object xValue) &&
@@ -936,7 +936,7 @@ namespace UnixxtyMCP.Editor.Tools
                     );
                 }
 
-                // Handle double[] or float[]
+                // Handle double[] or float[] or long[]
                 if (input is double[] doubleArray && doubleArray.Length >= 3)
                 {
                     return new Vector3(
@@ -950,12 +950,56 @@ namespace UnixxtyMCP.Editor.Tools
                 {
                     return new Vector3(floatArray[0], floatArray[1], floatArray[2]);
                 }
+
+                if (input is long[] longArray && longArray.Length >= 3)
+                {
+                    return new Vector3(
+                        (float)longArray[0],
+                        (float)longArray[1],
+                        (float)longArray[2]
+                    );
+                }
+
+                if (input is int[] intArray && intArray.Length >= 3)
+                {
+                    return new Vector3(intArray[0], intArray[1], intArray[2]);
+                }
+
+                // Fallback: try IList<object> for any enumerable collection
+                if (input is System.Collections.IList ilist && ilist.Count >= 3)
+                {
+                    return new Vector3(
+                        Convert.ToSingle(ilist[0]),
+                        Convert.ToSingle(ilist[1]),
+                        Convert.ToSingle(ilist[2])
+                    );
+                }
+
+                // Handle string representation: "[x, y, z]" or "x, y, z"
+                // This occurs when the JSON-RPC layer passes array params as raw strings
+                if (input is string str)
+                {
+                    str = str.Trim();
+                    if (str.StartsWith("[") && str.EndsWith("]"))
+                        str = str.Substring(1, str.Length - 2);
+
+                    string[] parts = str.Split(',');
+                    if (parts.Length >= 3)
+                    {
+                        return new Vector3(
+                            float.Parse(parts[0].Trim(), System.Globalization.CultureInfo.InvariantCulture),
+                            float.Parse(parts[1].Trim(), System.Globalization.CultureInfo.InvariantCulture),
+                            float.Parse(parts[2].Trim(), System.Globalization.CultureInfo.InvariantCulture)
+                        );
+                    }
+                }
             }
             catch (Exception exception)
             {
-                Debug.LogWarning($"[ManageGameObject] Failed to parse Vector3: {exception.Message}");
+                Debug.LogWarning($"[ManageGameObject] Failed to parse Vector3 from {input.GetType().FullName}: {exception.Message}");
             }
 
+            Debug.LogWarning($"[ManageGameObject] ParseVector3: Unrecognized input type '{input.GetType().FullName}'. Value: {input}");
             return null;
         }
 

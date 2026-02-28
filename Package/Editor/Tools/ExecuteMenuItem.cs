@@ -69,6 +69,18 @@ namespace UnixxtyMCP.Editor.Tools
                 };
             }
 
+            // Check if Unity is still compiling — menu items may not be registered yet
+            if (EditorApplication.isCompiling)
+            {
+                return new
+                {
+                    success = false,
+                    error = "Unity is still compiling scripts. Wait for compilation to finish and retry.",
+                    is_compiling = true,
+                    menu_path = normalizedMenuPath
+                };
+            }
+
             try
             {
                 // Execute the menu item

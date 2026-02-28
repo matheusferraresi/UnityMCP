@@ -46,8 +46,22 @@ namespace UnixxtyMCP.Editor.Tools
                     return new
                     {
                         success = true,
-                        message = "Compilation already in progress.",
+                        message = "Attached to in-progress compilation.",
                         job_id = existing.jobId,
+                        status = "compiling"
+                    };
+                }
+
+                // Compilation in progress but no tracked job (externally triggered).
+                // Create a tracking job so the caller can poll for results.
+                var autoJob = CompileJobManager.CreateAutoJob();
+                if (autoJob != null)
+                {
+                    return new
+                    {
+                        success = true,
+                        message = "Attached to externally-triggered compilation.",
+                        job_id = autoJob.jobId,
                         status = "compiling"
                     };
                 }
@@ -228,12 +242,43 @@ namespace UnixxtyMCP.Editor.Tools
             return _storage.jobs.FirstOrDefault(j => j.jobId == jobId);
         }
 
+        /// <summary>
+        /// Creates a tracking job for an externally-triggered compilation that is already in progress.
+        /// </summary>
+        public static CompileJob CreateAutoJob()
+        {
+            EnsureInitialized();
+
+            // If there's already an active compiling job, return it
+            if (_currentJob != null && _currentJob.status == CompileJobStatus.Compiling)
+                return _currentJob;
+
+            _currentJob = new CompileJob
+            {
+                jobId = "auto_" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                status = CompileJobStatus.Compiling,
+                startedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+            };
+
+            _storage.jobs.Add(_currentJob);
+            SaveToSessionState();
+            return _currentJob;
+        }
+
         private static void OnCompilationStarted(object context)
         {
-            // If no current job exists (compilation triggered outside of MCP), create one
+            EnsureInitialized();
+            // Auto-create job for externally-triggered compilation so callers can track it
             if (_currentJob == null || _currentJob.status != CompileJobStatus.Compiling)
             {
-                // Don't auto-create - only track MCP-initiated compilations
+                _currentJob = new CompileJob
+                {
+                    jobId = "auto_" + Guid.NewGuid().ToString("N").Substring(0, 8),
+                    status = CompileJobStatus.Compiling,
+                    startedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()
+                };
+                _storage.jobs.Add(_currentJob);
+                SaveToSessionState();
             }
         }
 

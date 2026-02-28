@@ -67,6 +67,12 @@ namespace UnixxtyMCP.Editor.Core
         private static bool s_initialized = false;
 
         /// <summary>
+        /// Tracks the JSON-RPC ID of the currently in-flight request.
+        /// Used by OnBeforeReload to send an error response before domain reload kills C#.
+        /// </summary>
+        private static string s_currentRequestId = null;
+
+        /// <summary>
         /// Gets whether the MCP proxy is currently active.
         /// </summary>
         public static bool IsInitialized => s_initialized;
@@ -313,6 +319,9 @@ namespace UnixxtyMCP.Editor.Core
             string requestId = ExtractRequestId(jsonRequest);
             string toolName = ExtractToolName(jsonRequest);
 
+            // Track the in-flight request so OnBeforeReload can respond if domain reload strikes
+            s_currentRequestId = requestId;
+
             try
             {
                 string response = MCPServer.Instance.HandleRequest(jsonRequest);
@@ -325,12 +334,14 @@ namespace UnixxtyMCP.Editor.Core
                         $"Response too large ({response.Length} bytes). Maximum supported size is {MaxResponseSize - 1} bytes. Try reducing max_depth or using more specific queries.",
                         requestId);
                     SendResponse(errorResponse);
+                    s_currentRequestId = null;
                     if (toolName != null)
                         ActivityLog.Record(toolName, false, "Response too large");
                     return;
                 }
 
                 SendResponse(response);
+                s_currentRequestId = null;
                 if (toolName != null)
                     ActivityLog.Record(toolName, true);
             }
@@ -351,6 +362,7 @@ namespace UnixxtyMCP.Editor.Core
 
                 string errorResponse = BuildErrorResponse(-32603, errorMessage, requestId);
                 SendResponse(errorResponse);
+                s_currentRequestId = null;
                 if (toolName != null)
                     ActivityLog.Record(toolName, false, isDomainReload ? "Domain reload interrupted" : exception.Message);
             }
@@ -364,6 +376,23 @@ namespace UnixxtyMCP.Editor.Core
         {
             try
             {
+                // If there's a pending request that hasn't been responded to yet,
+                // send an error response now — before domain reload kills C# and
+                // the native proxy is left with an open HTTP connection (causing client hang).
+                if (s_currentRequestId != null)
+                {
+                    string errorResponse = BuildErrorResponse(
+                        -32603,
+                        "Request interrupted by Unity domain reload. This is recoverable — wait 2-3 seconds and retry. " +
+                        "Domain reloads occur after exiting play mode or script recompilation.",
+                        s_currentRequestId);
+                    SendResponse(errorResponse);
+                    s_currentRequestId = null;
+
+                    if (VerboseLogging)
+                        Debug.Log("[MCPProxy] Sent domain-reload error for pending request before assembly reload.");
+                }
+
                 SetPollingActive(0);
                 EditorApplication.update -= PollForRequests;
             }
