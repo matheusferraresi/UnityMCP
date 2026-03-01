@@ -355,11 +355,14 @@ class SidecarHandler(BaseHTTPRequestHandler):
                 "instances": instances,
             }
             body = json.dumps(status).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(body)))
+                self.end_headers()
+                self.wfile.write(body)
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass  # Client disconnected before response was sent
         else:
             self.send_error(404)
 
@@ -396,25 +399,29 @@ class SidecarHandler(BaseHTTPRequestHandler):
                         },
                         "id": request_id
                     }).encode()
-                    self.send_response(200)
-                    self.send_header("Content-Type", "application/json")
-                    self.send_header("Content-Length", str(len(response)))
-                    self.end_headers()
-                    self.wfile.write(response)
-                    logger.info(f"← [{request_id}] {len(response)} bytes (sidecar-handled)")
+                    try:
+                        self.send_response(200)
+                        self.send_header("Content-Type", "application/json")
+                        self.send_header("Content-Length", str(len(response)))
+                        self.end_headers()
+                        self.wfile.write(response)
+                        logger.info(f"← [{request_id}] {len(response)} bytes (sidecar-handled)")
+                    except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                        pass
                     return
 
         try:
             response_bytes = forward_with_retry(body_bytes, request_id)
 
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(response_bytes)))
-            self.end_headers()
-            self.wfile.write(response_bytes)
-
-            # Log response size
-            logger.info(f"← [{request_id}] {len(response_bytes)} bytes")
+            try:
+                self.send_response(200)
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(response_bytes)))
+                self.end_headers()
+                self.wfile.write(response_bytes)
+                logger.info(f"← [{request_id}] {len(response_bytes)} bytes")
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass
 
         except Exception as e:
             # Unity is down — return a proper JSON-RPC error
@@ -428,11 +435,14 @@ class SidecarHandler(BaseHTTPRequestHandler):
                 "id": request_id
             }).encode()
 
-            self.send_response(200)  # JSON-RPC errors are still HTTP 200
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(error_response)))
-            self.end_headers()
-            self.wfile.write(error_response)
+            try:
+                self.send_response(200)  # JSON-RPC errors are still HTTP 200
+                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Length", str(len(error_response)))
+                self.end_headers()
+                self.wfile.write(error_response)
+            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+                pass
 
 
 # ─── Health check background thread ─────────────────────────────────────────
