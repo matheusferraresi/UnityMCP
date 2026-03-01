@@ -4,6 +4,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
+using Newtonsoft.Json.Linq;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -645,6 +646,14 @@ namespace UnixxtyMCP.Editor.Core
             string safeToolName = toolName ?? "unknown";
             string fileName = $"{safeToolName}_{timestamp}.txt";
             string filePath = Path.Combine(outputDir, fileName);
+
+            // Pretty-print the JSON so agents can read by line with offset/limit
+            try
+            {
+                var parsed = JToken.Parse(response);
+                response = parsed.ToString(Newtonsoft.Json.Formatting.Indented);
+            }
+            catch { /* If parsing fails, save the raw response */ }
 
             File.WriteAllText(filePath, response, System.Text.Encoding.UTF8);
 
