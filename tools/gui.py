@@ -196,9 +196,30 @@ class SidecarGUI(tk.Tk):
     def _is_alive(self):
         return self.sidecar_proc is not None and self.sidecar_proc.poll() is None
 
+    def _port_in_use(self):
+        """Check if the sidecar port is already in use by another process."""
+        import socket
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        try:
+            sock.bind(("127.0.0.1", self.sidecar_port))
+            sock.close()
+            return False
+        except OSError:
+            sock.close()
+            return True
+
     def _start(self):
         if self._is_alive():
             return
+
+        # Guard: refuse to spawn if another sidecar is already on this port
+        if self._port_in_use():
+            self._log(
+                f"[gui] Port {self.sidecar_port} already in use — another sidecar is running. Kill it first.",
+                "ERROR"
+            )
+            return
+
         cmd = [sys.executable, "-u", SIDECAR_SCRIPT,
                "--port", str(self.sidecar_port),
                "--unity-port", str(self.unity_port)]

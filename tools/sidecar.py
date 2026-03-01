@@ -498,6 +498,16 @@ def main():
     health_thread = threading.Thread(target=health_check_loop, daemon=True)
     health_thread.start()
 
+    # Guard: check if port is already in use
+    import socket
+    test_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    try:
+        test_sock.bind(("127.0.0.1", args.port))
+        test_sock.close()
+    except OSError:
+        logger.error(f"Port {args.port} is already in use. Another sidecar may be running.")
+        sys.exit(1)
+
     # Start HTTP server
     server = HTTPServer(("127.0.0.1", args.port), SidecarHandler)
     logger.info(f"Sidecar listening on http://127.0.0.1:{args.port}")
