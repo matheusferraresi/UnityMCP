@@ -28,6 +28,15 @@ namespace UnixxtyMCP.Editor.Tools
         [DllImport("user32.dll")]
         private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+        [DllImport("user32.dll")]
+        private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
+
+        [DllImport("kernel32.dll")]
+        private static extern uint GetCurrentThreadId();
+
+        [DllImport("user32.dll")]
+        private static extern bool AttachThreadInput(uint idAttach, uint idAttachTo, bool fAttach);
+
         private const int SW_RESTORE = 9;
         private const int SW_SHOW = 5;
 #endif
@@ -625,8 +634,24 @@ namespace UnixxtyMCP.Editor.Tools
                     return new { success = false, error = "Could not get Unity window handle." };
                 }
 
+                // AttachThreadInput trick: attach to the foreground window's thread
+                // to bypass Windows' SetForegroundWindow restriction
+                bool attached = false;
+                uint foregroundThread = GetWindowThreadProcessId(_previousForegroundWindow, out _);
+                uint currentThread = GetCurrentThreadId();
+
+                if (foregroundThread != currentThread)
+                {
+                    attached = AttachThreadInput(currentThread, foregroundThread, true);
+                }
+
                 ShowWindow(unityHwnd, SW_RESTORE);
                 bool focused = SetForegroundWindow(unityHwnd);
+
+                if (attached)
+                {
+                    AttachThreadInput(currentThread, foregroundThread, false);
+                }
 
                 return new
                 {
@@ -726,8 +751,17 @@ namespace UnixxtyMCP.Editor.Tools
                 var unityHwnd = System.Diagnostics.Process.GetCurrentProcess().MainWindowHandle;
                 if (unityHwnd != IntPtr.Zero)
                 {
+                    bool attached = false;
+                    uint foregroundThread = GetWindowThreadProcessId(_previousForegroundWindow, out _);
+                    uint currentThread = GetCurrentThreadId();
+                    if (foregroundThread != currentThread)
+                        attached = AttachThreadInput(currentThread, foregroundThread, true);
+
                     ShowWindow(unityHwnd, SW_RESTORE);
                     SetForegroundWindow(unityHwnd);
+
+                    if (attached)
+                        AttachThreadInput(currentThread, foregroundThread, false);
                 }
             }
             catch { }
