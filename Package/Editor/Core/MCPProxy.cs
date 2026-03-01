@@ -266,10 +266,24 @@ namespace UnixxtyMCP.Editor.Core
                 // Configure remote access before starting the server
                 ApplyRemoteAccessConfig();
 
-                int result = StartServer(DEFAULT_PORT);
+                // Retry binding — port may be in TIME_WAIT from a previous process exit
+                int result = -1;
+                const int maxAttempts = 5;
+                for (int attempt = 0; attempt < maxAttempts; attempt++)
+                {
+                    result = StartServer(DEFAULT_PORT);
+                    if (result >= 0) break;
+
+                    if (attempt < maxAttempts - 1)
+                    {
+                        Debug.Log($"[MCPProxy] Port {DEFAULT_PORT} unavailable, retrying ({attempt + 1}/{maxAttempts})...");
+                        System.Threading.Thread.Sleep(1000);
+                    }
+                }
+
                 if (result < 0)
                 {
-                    Debug.LogWarning($"[MCPProxy] Failed to bind to port {DEFAULT_PORT}. If you just updated the package, restart the Unity Editor. Otherwise, check if another Unity instance is using the same port.");
+                    Debug.LogWarning($"[MCPProxy] Failed to bind to port {DEFAULT_PORT} after {maxAttempts} attempts. Check if another Unity instance is using the same port.");
                     return;
                 }
 

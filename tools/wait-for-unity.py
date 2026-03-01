@@ -3,6 +3,9 @@
 
 import argparse
 import json
+import os
+import re
+import subprocess
 import sys
 import time
 import urllib.request
@@ -34,12 +37,60 @@ def check_ready(port):
         return False, False, None
 
 
+def kill_port(port):
+    """Find and kill the process holding a port (Windows only). Returns True if killed."""
+    if os.name != "nt":
+        print("  --kill-port is only supported on Windows", file=sys.stderr)
+        return False
+
+    try:
+        # Find PID holding the port
+        result = subprocess.run(
+            ["netstat", "-ano", "-p", "TCP"],
+            capture_output=True, text=True, timeout=5
+        )
+        pid = None
+        for line in result.stdout.splitlines():
+            if f":{port}" in line and "LISTENING" in line:
+                parts = line.split()
+                pid = parts[-1]
+                break
+
+        if not pid:
+            print(f"  No process found listening on port {port}", file=sys.stderr)
+            return False
+
+        # Check what process it is
+        result = subprocess.run(
+            ["tasklist", "/FI", f"PID eq {pid}", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=5
+        )
+        proc_name = result.stdout.strip().split(",")[0].strip('"') if result.stdout.strip() else "unknown"
+        print(f"  Port {port} held by PID {pid} ({proc_name})", file=sys.stderr)
+
+        # Kill it
+        subprocess.run(["taskkill", "/F", "/PID", pid], capture_output=True, timeout=5)
+        print(f"  Killed PID {pid}", file=sys.stderr)
+        time.sleep(1)  # Give OS time to release the port
+        return True
+
+    except Exception as e:
+        print(f"  Failed to kill port holder: {e}", file=sys.stderr)
+        return False
+
+
 def main():
     parser = argparse.ArgumentParser(description="Wait for Unity MCP server to be ready")
     parser.add_argument("--port", type=int, default=8080, help="MCP server port (default: 8080)")
     parser.add_argument("--timeout", type=int, default=120, help="Max wait seconds (default: 120)")
     parser.add_argument("--interval", type=float, default=2, help="Poll interval seconds (default: 2)")
+    parser.add_argument("--kill-port", action="store_true",
+                        help="Kill any process holding the port before waiting (Windows only)")
     args = parser.parse_args()
+
+    if args.kill_port:
+        print(f"Checking for orphaned process on port {args.port}...", file=sys.stderr)
+        kill_port(args.port)
 
     start = time.time()
     print(f"Waiting for Unity MCP on port {args.port} (timeout: {args.timeout}s)...", file=sys.stderr)

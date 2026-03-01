@@ -422,6 +422,15 @@ EXPORT int StartServer(int port)
         return 1;  /* Already running */
     }
 
+    /* Clean up stale state from a previous crash or unclean shutdown.
+     * If s_listener is non-NULL but s_running is 0, the previous session
+     * didn't fully clean up (e.g., DllMain's 100ms sleep wasn't enough). */
+    if (s_listener != NULL)
+    {
+        mg_mgr_free(&s_mgr);
+        s_listener = NULL;
+    }
+
     /* Reset unload flag */
     s_unloading = 0;
 
