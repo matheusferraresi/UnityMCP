@@ -839,17 +839,28 @@ namespace UnixxtyMCP.Editor.Tools
             }
 
             string projectPath = System.IO.Path.GetDirectoryName(Application.dataPath);
+            string unityExe = System.Diagnostics.Process.GetCurrentProcess().MainModule.FileName;
 
             // Schedule the restart on next editor update so the response gets sent first
             EditorApplication.delayCall += () =>
             {
-                EditorApplication.OpenProject(projectPath);
+                // Launch a new Unity process with the same project
+                var startInfo = new System.Diagnostics.ProcessStartInfo
+                {
+                    FileName = unityExe,
+                    Arguments = $"-projectPath \"{projectPath}\"",
+                    UseShellExecute = false
+                };
+                System.Diagnostics.Process.Start(startInfo);
+
+                // Exit the current editor
+                EditorApplication.Exit(0);
             };
 
             return new
             {
                 success = true,
-                message = $"Unity Editor restart scheduled. The editor will close and reopen project at '{projectPath}'. MCP connection will drop — reconnect after Unity restarts."
+                message = $"Unity Editor restart scheduled. A new instance will launch and this one will exit. MCP connection will drop — use wait-for-unity.py to detect when ready."
             };
         }
 
