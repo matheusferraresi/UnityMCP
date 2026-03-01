@@ -647,15 +647,28 @@ namespace UnixxtyMCP.Editor.Core
             string fileName = $"{safeToolName}_{timestamp}.txt";
             string filePath = Path.Combine(outputDir, fileName);
 
-            // Pretty-print the JSON so agents can read by line with offset/limit
+            // Extract the tool result text from the JSON-RPC envelope and pretty-print it.
+            // The response is: {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"..."}]},"id":...}
+            // The agent only needs the inner tool result, not the envelope.
+            string contentToSave = response;
             try
             {
-                var parsed = JToken.Parse(response);
-                response = parsed.ToString(Newtonsoft.Json.Formatting.Indented);
+                var parsed = JObject.Parse(response);
+                var text = parsed.SelectToken("result.content[0].text");
+                if (text != null)
+                {
+                    // The text value is the serialized tool result — parse and pretty-print it
+                    var toolResult = JToken.Parse(text.ToString());
+                    contentToSave = toolResult.ToString(Newtonsoft.Json.Formatting.Indented);
+                }
+                else
+                {
+                    contentToSave = parsed.ToString(Newtonsoft.Json.Formatting.Indented);
+                }
             }
             catch { /* If parsing fails, save the raw response */ }
 
-            File.WriteAllText(filePath, response, System.Text.Encoding.UTF8);
+            File.WriteAllText(filePath, contentToSave, System.Text.Encoding.UTF8);
 
             string absPath = filePath.Replace("\\", "/");
             string relPath = $"Assets/_MCP_Output/{fileName}";
