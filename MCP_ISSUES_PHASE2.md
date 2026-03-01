@@ -203,7 +203,7 @@ Example response when `save_to_file` is used:
 | 17 | No "delete all except" operation | LOW | Small | FIXED (652b4b4) |
 | 18 | console_read persistence across reload | LOW | Trivial | Open |
 | 19 | scene_get_hierarchy too large for deep models | HIGH | Medium | PARTIAL (e5622a1) — compact mode |
-| 19a | Large responses: save_to_file option for any tool | MEDIUM | Medium | Open |
+| 19a | Large responses: auto-save to file | MEDIUM | Medium | FIXED — centralized in MCPProxy.cs |
 | 20 | manage_material can't inspect scene renderers | MEDIUM | Small | Open |
 | 21 | console_read truncates multi-line messages | MEDIUM | Small | FIXED (e5622a1) |
 

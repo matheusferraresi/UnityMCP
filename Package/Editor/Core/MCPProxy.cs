@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
@@ -404,15 +405,12 @@ namespace UnixxtyMCP.Editor.Core
 
                 if (response != null && response.Length >= MaxResponseSize)
                 {
-                    Debug.LogWarning($"[MCPProxy] Response size ({response.Length} bytes) exceeds maximum ({MaxResponseSize} bytes). Returning error response.");
-                    string errorResponse = BuildErrorResponse(
-                        -32603,
-                        $"Response too large ({response.Length} bytes). Maximum supported size is {MaxResponseSize - 1} bytes. Try reducing max_depth or using more specific queries.",
-                        requestId);
-                    SendResponse(errorResponse);
+                    Debug.LogWarning($"[MCPProxy] Response too large ({response.Length} bytes). Saving to file.");
+                    string savedResponse = SaveOversizedResponse(response, toolName, requestId);
+                    SendResponse(savedResponse);
                     s_currentRequestId = null;
                     if (toolName != null)
-                        ActivityLog.Record(toolName, false, "Response too large");
+                        ActivityLog.Record(toolName, true, "Saved to file (oversized)");
                     return;
                 }
 
@@ -626,6 +624,37 @@ namespace UnixxtyMCP.Editor.Core
         private static string BuildErrorResponse(int code, string message, string requestId)
         {
             return $"{{\"jsonrpc\":\"2.0\",\"error\":{{\"code\":{code},\"message\":\"{EscapeJson(message)}\"}},\"id\":{requestId}}}";
+        }
+
+        /// <summary>
+        /// Saves an oversized response to a file and returns a small JSON-RPC success
+        /// response with the file path, so agents can use the Read tool to paginate.
+        /// </summary>
+        private static string SaveOversizedResponse(string response, string toolName, string requestId)
+        {
+            string outputDir = Path.Combine(Application.dataPath, "_MCP_Output");
+            if (!Directory.Exists(outputDir))
+                Directory.CreateDirectory(outputDir);
+
+            // Auto-create .gitignore so output files aren't committed
+            string gitignorePath = Path.Combine(outputDir, ".gitignore");
+            if (!File.Exists(gitignorePath))
+                File.WriteAllText(gitignorePath, "*\n!.gitignore\n");
+
+            string timestamp = DateTime.Now.ToString("yyyy-MM-dd_HH-mm-ss");
+            string safeToolName = toolName ?? "unknown";
+            string fileName = $"{safeToolName}_{timestamp}.txt";
+            string filePath = Path.Combine(outputDir, fileName);
+
+            File.WriteAllText(filePath, response, System.Text.Encoding.UTF8);
+
+            string absPath = filePath.Replace("\\", "/");
+            string relPath = $"Assets/_MCP_Output/{fileName}";
+
+            // Build a small JSON-RPC success response matching the MCP tool result format:
+            // {"jsonrpc":"2.0","result":{"content":[{"type":"text","text":"..."}],"isError":false},"id":...}
+            string innerJson = $"{{\"saved_to_file\":true,\"path\":\"{EscapeJson(absPath)}\",\"relative_path\":\"{EscapeJson(relPath)}\",\"original_size_bytes\":{response.Length},\"hint\":\"Response exceeded 262KB MCP limit. Full JSON saved to file. Use Read tool with offset/limit to paginate.\"}}";
+            return $"{{\"jsonrpc\":\"2.0\",\"result\":{{\"content\":[{{\"type\":\"text\",\"text\":\"{EscapeJson(innerJson)}\"}}],\"isError\":false}},\"id\":{requestId}}}";
         }
 
         /// <summary>
