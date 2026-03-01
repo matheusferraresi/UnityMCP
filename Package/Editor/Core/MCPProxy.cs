@@ -19,7 +19,7 @@ namespace UnixxtyMCP.Editor.Core
     public static class MCPProxy
     {
         private const string DLL_NAME = "UnixxtyMCPProxy";
-        private const int DEFAULT_PORT = 8080;
+        private const int DEFAULT_PORT = 8081;
 
         /// <summary>
         /// Maximum response size supported by the proxy buffer.

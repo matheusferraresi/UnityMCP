@@ -143,7 +143,7 @@ namespace UnixxtyMCP.Editor.UI
         private void DrawServerInfo()
         {
             bool isRunning = MCPProxy.IsInitialized;
-            int port = MCPServer.Instance?.Port ?? 8080;
+            int port = MCPServer.Instance?.Port ?? 8081;
 
             string endpoint;
             if (MCPProxy.RemoteAccessEnabled)
@@ -293,7 +293,7 @@ namespace UnixxtyMCP.Editor.UI
                 EditorGUILayout.LabelField("TLS", tlsStatus);
 
                 // Endpoint
-                int port = MCPServer.Instance?.Port ?? 8080;
+                int port = MCPServer.Instance?.Port ?? 8081;
                 string lanIp = NetworkUtils.GetLanIpAddress();
                 EditorGUILayout.LabelField("Endpoint", $"https://{lanIp}:{port}/");
 
