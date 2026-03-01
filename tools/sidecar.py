@@ -35,13 +35,17 @@ from collections import deque
 logger = logging.getLogger("sidecar")
 
 # Global state
-unity_port = 8081
+unity_port = 8081  # primary port (backwards compat, used for forwarding)
 unity_connected = False
 last_unity_check = 0
 HEALTH_CHECK_INTERVAL = 5  # seconds between Unity health checks
 REQUEST_TIMEOUT = 60  # seconds to wait for Unity response (longer than native 30s)
 RETRY_INTERVAL = 1  # seconds between retries when Unity is down
 MAX_RETRIES = 30  # max retries before giving up on a queued request
+
+# Multi-instance tracking: {port: {"connected": bool, "label": str}}
+DISCOVERY_PORTS = range(8081, 8091)  # scan ports 8081-8090
+unity_instances = {}
 
 
 # ─── Window Focus Management (Windows only) ────────────────────────────────
@@ -247,17 +251,11 @@ def is_focus_action(parsed_request):
 
 # ─── Unity Health Check ─────────────────────────────────────────────────────
 
-def check_unity_health():
-    """Ping Unity's native DLL to see if it's responsive."""
-    global unity_connected, last_unity_check
-    now = time.time()
-    if now - last_unity_check < HEALTH_CHECK_INTERVAL:
-        return unity_connected
-
-    last_unity_check = now
+def _ping_port(port):
+    """Ping a single Unity port. Returns True if responsive."""
     try:
         req = urllib.request.Request(
-            f"http://localhost:{unity_port}",
+            f"http://localhost:{port}",
             data=json.dumps({
                 "jsonrpc": "2.0",
                 "method": "tools/list",
@@ -265,12 +263,39 @@ def check_unity_health():
             }).encode(),
             headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=3) as resp:
+        with urllib.request.urlopen(req, timeout=2) as resp:
             resp.read()
-            unity_connected = True
+            return True
     except Exception:
-        unity_connected = False
+        return False
 
+
+def check_unity_health():
+    """Ping Unity instances to see which are responsive."""
+    global unity_connected, last_unity_check, unity_instances
+    now = time.time()
+    if now - last_unity_check < HEALTH_CHECK_INTERVAL:
+        return unity_connected
+
+    last_unity_check = now
+
+    # Always check primary port
+    primary_alive = _ping_port(unity_port)
+    unity_connected = primary_alive
+
+    # Discover additional instances on nearby ports
+    new_instances = {}
+    for port in DISCOVERY_PORTS:
+        connected = _ping_port(port) if port != unity_port else primary_alive
+        if connected or port in unity_instances:
+            label = "Host" if port == 8081 else f"Clone {port - 8081 - 1}"
+            new_instances[port] = {"connected": connected, "label": label}
+
+    # If primary port not in range, add it too
+    if unity_port not in new_instances:
+        new_instances[unity_port] = {"connected": primary_alive, "label": "Host"}
+
+    unity_instances = new_instances
     return unity_connected
 
 
@@ -318,11 +343,16 @@ class SidecarHandler(BaseHTTPRequestHandler):
         """Health/status endpoint."""
         if self.path == "/status":
             check_unity_health()
+            instances = [
+                {"port": port, "connected": info["connected"], "label": info["label"]}
+                for port, info in sorted(unity_instances.items())
+            ]
             status = {
                 "sidecar": "running",
                 "unity_connected": unity_connected,
                 "unity_port": unity_port,
                 "auto_focus": _auto_focus_enabled,
+                "instances": instances,
             }
             body = json.dumps(status).encode()
             self.send_response(200)
@@ -409,16 +439,19 @@ class SidecarHandler(BaseHTTPRequestHandler):
 
 def health_check_loop():
     """Periodically check Unity connectivity and log state changes."""
-    global unity_connected
-    was_connected = None
+    prev_states = {}
     while True:
         check_unity_health()
-        if unity_connected != was_connected:
-            if unity_connected:
-                logger.info("Unity connected on port %d", unity_port)
-            else:
-                logger.warning("Unity disconnected from port %d", unity_port)
-            was_connected = unity_connected
+        # Log per-instance state changes
+        for port, info in unity_instances.items():
+            was = prev_states.get(port)
+            now_connected = info["connected"]
+            if was is None or was != now_connected:
+                if now_connected:
+                    logger.info("Unity %s connected on port %d", info["label"], port)
+                else:
+                    logger.warning("Unity %s disconnected from port %d", info["label"], port)
+        prev_states = {p: i["connected"] for p, i in unity_instances.items()}
         time.sleep(HEALTH_CHECK_INTERVAL)
 
 

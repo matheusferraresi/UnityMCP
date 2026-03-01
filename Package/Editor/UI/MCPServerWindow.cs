@@ -185,7 +185,8 @@ namespace UnixxtyMCP.Editor.UI
         private void DrawServerInfo()
         {
             bool isRunning = MCPProxy.IsInitialized;
-            int unityPort = MCPServer.Instance?.Port ?? 8081;
+            int unityPort = isRunning ? MCPProxy.ActivePort : (MCPServer.Instance?.Port ?? 8081);
+            string instanceLabel = MCPProxy.InstanceLabel;
 
             // Periodically check sidecar
             CheckSidecarStatus();
@@ -193,6 +194,12 @@ namespace UnixxtyMCP.Editor.UI
             EditorGUILayout.LabelField("Server Information", EditorStyles.boldLabel);
 
             EditorGUI.indentLevel++;
+
+            // Instance label (Host / Clone N)
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PrefixLabel("Instance");
+            GUILayout.Label(instanceLabel, EditorStyles.boldLabel);
+            EditorGUILayout.EndHorizontal();
 
             // Sidecar status
             EditorGUILayout.BeginHorizontal();

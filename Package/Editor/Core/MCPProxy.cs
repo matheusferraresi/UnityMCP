@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
@@ -73,9 +75,24 @@ namespace UnixxtyMCP.Editor.Core
         private static string s_currentRequestId = null;
 
         /// <summary>
+        /// The actual port this instance bound to (may differ from DEFAULT_PORT for ParrelSync clones).
+        /// </summary>
+        private static int s_activePort = DEFAULT_PORT;
+
+        /// <summary>
         /// Gets whether the MCP proxy is currently active.
         /// </summary>
         public static bool IsInitialized => s_initialized;
+
+        /// <summary>
+        /// Gets the port this instance is actually listening on.
+        /// </summary>
+        public static int ActivePort => s_activePort;
+
+        /// <summary>
+        /// Gets the instance label (e.g. "Host", "Clone 0") for display purposes.
+        /// </summary>
+        public static string InstanceLabel { get; private set; } = "Host";
 
         /// <summary>
         /// Gets or sets whether verbose logging is enabled.
@@ -243,6 +260,48 @@ namespace UnixxtyMCP.Editor.Core
         }
 
         /// <summary>
+        /// Determines the port to bind to, accounting for ParrelSync clones.
+        /// Uses reflection to avoid a hard dependency on ParrelSync.
+        /// Host: 8081, Clone 0: 8082, Clone 1: 8083, etc.
+        /// </summary>
+        private static int DeterminePort()
+        {
+            try
+            {
+                var clonesManagerType = AppDomain.CurrentDomain.GetAssemblies()
+                    .SelectMany(a => { try { return a.GetTypes(); } catch { return Type.EmptyTypes; } })
+                    .FirstOrDefault(t => t.FullName == "ParrelSync.ClonesManager");
+
+                if (clonesManagerType != null)
+                {
+                    var isCloneMethod = clonesManagerType.GetMethod("IsClone",
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Static);
+
+                    if (isCloneMethod != null && (bool)isCloneMethod.Invoke(null, null))
+                    {
+                        // Extract clone index from project path: ...ProjectName_clone_0/Assets
+                        string path = Application.dataPath;
+                        var match = Regex.Match(path, @"_clone_(\d+)[/\\]");
+                        if (match.Success && int.TryParse(match.Groups[1].Value, out int cloneIndex))
+                        {
+                            int port = DEFAULT_PORT + cloneIndex + 1;
+                            InstanceLabel = $"Clone {cloneIndex}";
+                            Debug.Log($"[MCPProxy] ParrelSync clone {cloneIndex} detected — using port {port}");
+                            return port;
+                        }
+                    }
+                }
+            }
+            catch (Exception e)
+            {
+                if (VerboseLogging) Debug.Log($"[MCPProxy] ParrelSync detection skipped: {e.Message}");
+            }
+
+            InstanceLabel = "Host";
+            return DEFAULT_PORT;
+        }
+
+        /// <summary>
         /// Static constructor called automatically by Unity due to [InitializeOnLoad].
         /// Attempts to initialize the proxy on editor startup and after domain reloads.
         /// </summary>
@@ -266,24 +325,27 @@ namespace UnixxtyMCP.Editor.Core
                 // Configure remote access before starting the server
                 ApplyRemoteAccessConfig();
 
+                // Determine port (auto-adjusts for ParrelSync clones)
+                s_activePort = DeterminePort();
+
                 // Retry binding — port may be in TIME_WAIT from a previous process exit
                 int result = -1;
                 const int maxAttempts = 5;
                 for (int attempt = 0; attempt < maxAttempts; attempt++)
                 {
-                    result = StartServer(DEFAULT_PORT);
+                    result = StartServer(s_activePort);
                     if (result >= 0) break;
 
                     if (attempt < maxAttempts - 1)
                     {
-                        Debug.Log($"[MCPProxy] Port {DEFAULT_PORT} unavailable, retrying ({attempt + 1}/{maxAttempts})...");
+                        Debug.Log($"[MCPProxy] Port {s_activePort} unavailable, retrying ({attempt + 1}/{maxAttempts})...");
                         System.Threading.Thread.Sleep(1000);
                     }
                 }
 
                 if (result < 0)
                 {
-                    Debug.LogWarning($"[MCPProxy] Failed to bind to port {DEFAULT_PORT} after {maxAttempts} attempts. Check if another Unity instance is using the same port.");
+                    Debug.LogWarning($"[MCPProxy] Failed to bind to port {s_activePort} after {maxAttempts} attempts. Check if another Unity instance is using the same port.");
                     return;
                 }
 
@@ -300,7 +362,7 @@ namespace UnixxtyMCP.Editor.Core
 
                 s_initialized = true;
 
-                if (VerboseLogging) Debug.Log($"[MCPProxy] MCP proxy initialized on port {DEFAULT_PORT}");
+                if (VerboseLogging) Debug.Log($"[MCPProxy] MCP proxy initialized on port {s_activePort} ({InstanceLabel})");
             }
             catch (DllNotFoundException dllException)
             {
