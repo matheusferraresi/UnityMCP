@@ -108,6 +108,7 @@ Transport and orchestration only:
 | File | Purpose |
 |------|---------|
 | `tools/sidecar.py` | External proxy server |
+| `tools/dev.py` | Dev runner — auto-reloads sidecar + triggers Unity recompile on file changes |
 | `tools/wait-for-unity.py` | CLI tool for checking Unity readiness |
 | `Package/Editor/Core/MCPProxy.cs` | C# proxy (now on port 8081) |
 | `Proxy~/proxy.c` | Native DLL (to be removed in Step 2) |
