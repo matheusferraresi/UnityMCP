@@ -114,17 +114,72 @@ Or by tag: `{"action": "delete_by_tag", "tag": "EditorOnly"}`
 
 ---
 
+## Issue 19: scene_get_hierarchy Response Too Large for Deep Models (HIGH)
+
+**Problem**: Mech models imported from Sketchfab have deep hierarchies (50+ nodes). `scene_get_hierarchy` with `max_depth=5` on a scene with two such models exceeds the 262KB MCP response limit (327KB), causing a hard error. There's no way to get deep hierarchies of complex models.
+
+**Impact**: HIGH — blocks inspection of imported 3D model hierarchies, which is critical for scene setup and debugging.
+
+**Proposed Fix**:
+- Auto-truncate when approaching response size limit (e.g., skip `componentTypes` for leaf nodes, collapse empty intermediate nodes)
+- Add a `compact` parameter that strips verbose fields (componentTypes, tag, layer, isStatic) to reduce payload
+- Or: add response size awareness — if result > 200KB, auto-trim deepest levels and add `"truncated_at_depth": 3`
+
+**Workaround**: Use `max_depth=1` or `max_depth=2` and manually drill into subtrees with `parent` parameter.
+
+---
+
+## Issue 20: manage_material get_info Cannot Inspect Scene Object Renderers (MEDIUM)
+
+**Problem**: `manage_material get_info` requires `material_path` (an asset path), but there's no way to inspect what shader/properties a scene object's renderer is using. Tried `target: "Mech1/MechModel/.../Object_7"` but got error about missing `material_path`.
+
+**Impact**: MEDIUM — debugging material issues on scene objects requires guessing the material asset path or looking in the Inspector manually.
+
+**Proposed Fix**:
+- Add `get_renderer_info` action that accepts a scene object target and returns its renderer's material names, shader, and key properties
+- Or: allow `get_info` to accept `target` (scene object) as alternative to `material_path` (asset path)
+
+**Workaround**: Find the material asset path manually and use that with `get_info`.
+
+---
+
+## Issue 21: console_read Truncates Multi-line Log Messages (MEDIUM)
+
+**Problem**: `Debug.Log()` messages containing `\n` newlines are truncated to the first line in `console_read` output. Only the first line appears; the rest is silently dropped.
+
+**Impact**: MEDIUM — developers often log multi-line diagnostics (stack traces, formatted data). Losing all but the first line makes debugging harder.
+
+**Proposed Fix**:
+- Preserve full message content including newlines in `console_read` output
+- If truncation is needed for size, add `"truncated": true` flag and a `full_length` field
+
+**Workaround**: Use individual `Debug.Log()` calls per line instead of multi-line messages.
+
+---
+
+## Issue 12a: compile_and_watch AssetDatabase.Refresh Infinite Loop (FIXED)
+
+**Problem**: The Issue 12 fix (`AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport)` in `OnCompilationFinished`) triggered another compile cycle, creating an infinite loop. The other Claude agent was stuck polling `get_job` forever.
+
+**Fix Applied**: Changed to `AssetDatabase.Refresh()` (no force flag) with `!EditorApplication.isCompiling` guard. Committed as `8237bb9`.
+
+---
+
 ## Summary
 
-| # | Issue | Priority | Effort | Category |
-|---|-------|----------|--------|----------|
-| 12 | compile_and_watch misses MenuItem registration | HIGH | Small | Compilation |
-| 13 | simulate_input silent fail without focus | HIGH | Small | Input |
-| 14 | Tool naming inconsistency | MEDIUM | Medium | DX/Discovery |
-| 15 | scene_screenshot async with no completion | MEDIUM | Small | Screenshot |
-| 16 | No batch delete for GameObjects | MEDIUM | Small | Scene Mgmt |
-| 17 | No "delete all except" operation | LOW | Small | Scene Mgmt |
-| 18 | console_read persistence across reload | LOW | Trivial (doc) | Logging |
+| # | Issue | Priority | Effort | Status |
+|---|-------|----------|--------|--------|
+| 12 | compile_and_watch misses MenuItem registration | HIGH | Small | FIXED (652b4b4) |
+| 12a | compile_and_watch Refresh infinite loop | HIGH | Small | FIXED (8237bb9) |
+| 13 | simulate_input silent fail without focus | HIGH | Small | FIXED (652b4b4) |
+| 14 | Tool naming inconsistency / did_you_mean | MEDIUM | Medium | FIXED (652b4b4) |
+| 15 | scene_screenshot async with no completion | MEDIUM | Small | FIXED (652b4b4) |
+| 16 | No batch delete for GameObjects | MEDIUM | Small | FIXED (652b4b4) |
+| 17 | No "delete all except" operation | LOW | Small | FIXED (652b4b4) |
+| 18 | console_read persistence across reload | LOW | Trivial | Open |
+| 19 | scene_get_hierarchy too large for deep models | HIGH | Medium | Open |
+| 20 | manage_material can't inspect scene renderers | MEDIUM | Small | Open |
+| 21 | console_read truncates multi-line messages | MEDIUM | Small | Open |
 
 ### Priority Clusters
 

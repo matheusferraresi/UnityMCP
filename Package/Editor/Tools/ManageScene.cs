@@ -409,6 +409,7 @@ namespace UnixxtyMCP.Editor.Tools
             [MCPParam("parent", "Instance ID or name of parent GameObject to list children of (null for roots)")] string parent = null,
             [MCPParam("max_depth", "Maximum depth to traverse (default: 1, just immediate children)", Minimum = 1)] int maxDepth = 1,
             [MCPParam("include_transform", "Include transform data in results")] bool includeTransform = false,
+            [MCPParam("compact", "Compact mode: only name, instanceID, childCount, and children. Use for deep/large hierarchies to avoid response size limits.")] bool compact = false,
             [MCPParam("page_size", "Maximum number of items to return (default: 50, max: 500)", Minimum = 1, Maximum = 500)] int pageSize = 50,
             [MCPParam("cursor", "Starting index for pagination (default: 0)", Minimum = 0)] int cursor = 0)
         {
@@ -493,7 +494,7 @@ namespace UnixxtyMCP.Editor.Tools
                     var gameObject = nodes[i];
                     if (gameObject != null)
                     {
-                        items.Add(BuildGameObjectSummary(gameObject, includeTransform, resolvedMaxDepth, 0));
+                        items.Add(BuildGameObjectSummary(gameObject, includeTransform, resolvedMaxDepth, 0, compact));
                     }
                 }
 
@@ -764,7 +765,7 @@ namespace UnixxtyMCP.Editor.Tools
         /// <summary>
         /// Builds a summary object for a GameObject.
         /// </summary>
-        private static object BuildGameObjectSummary(GameObject gameObject, bool includeTransform, int maxDepth, int currentDepth)
+        private static object BuildGameObjectSummary(GameObject gameObject, bool includeTransform, int maxDepth, int currentDepth, bool compact = false)
         {
             if (gameObject == null)
             {
@@ -773,47 +774,62 @@ namespace UnixxtyMCP.Editor.Tools
 
             int childCount = gameObject.transform != null ? gameObject.transform.childCount : 0;
 
-            // Get component type names
-            var componentTypes = new List<string>();
-            try
+            Dictionary<string, object> summary;
+
+            if (compact)
             {
-                var components = gameObject.GetComponents<Component>();
-                foreach (var component in components)
+                // Compact mode: minimal fields to stay under response size limits
+                summary = new Dictionary<string, object>
                 {
-                    if (component != null)
+                    { "name", gameObject.name },
+                    { "instanceID", gameObject.GetInstanceID() },
+                    { "childCount", childCount }
+                };
+            }
+            else
+            {
+                // Full mode: all fields
+                var componentTypes = new List<string>();
+                try
+                {
+                    var components = gameObject.GetComponents<Component>();
+                    foreach (var component in components)
                     {
-                        componentTypes.Add(component.GetType().Name);
+                        if (component != null)
+                        {
+                            componentTypes.Add(component.GetType().Name);
+                        }
                     }
                 }
-            }
-            catch
-            {
-                // Ignore errors when getting components
-            }
-
-            var summary = new Dictionary<string, object>
-            {
-                { "name", gameObject.name },
-                { "instanceID", gameObject.GetInstanceID() },
-                { "activeSelf", gameObject.activeSelf },
-                { "activeInHierarchy", gameObject.activeInHierarchy },
-                { "tag", gameObject.tag },
-                { "layer", gameObject.layer },
-                { "isStatic", gameObject.isStatic },
-                { "path", GetGameObjectPath(gameObject) },
-                { "childCount", childCount },
-                { "componentTypes", componentTypes }
-            };
-
-            if (includeTransform && gameObject.transform != null)
-            {
-                var transform = gameObject.transform;
-                summary["transform"] = new Dictionary<string, object>
+                catch
                 {
-                    { "localPosition", new[] { transform.localPosition.x, transform.localPosition.y, transform.localPosition.z } },
-                    { "localRotation", new[] { transform.localEulerAngles.x, transform.localEulerAngles.y, transform.localEulerAngles.z } },
-                    { "localScale", new[] { transform.localScale.x, transform.localScale.y, transform.localScale.z } }
+                    // Ignore errors when getting components
+                }
+
+                summary = new Dictionary<string, object>
+                {
+                    { "name", gameObject.name },
+                    { "instanceID", gameObject.GetInstanceID() },
+                    { "activeSelf", gameObject.activeSelf },
+                    { "activeInHierarchy", gameObject.activeInHierarchy },
+                    { "tag", gameObject.tag },
+                    { "layer", gameObject.layer },
+                    { "isStatic", gameObject.isStatic },
+                    { "path", GetGameObjectPath(gameObject) },
+                    { "childCount", childCount },
+                    { "componentTypes", componentTypes }
                 };
+
+                if (includeTransform && gameObject.transform != null)
+                {
+                    var transform = gameObject.transform;
+                    summary["transform"] = new Dictionary<string, object>
+                    {
+                        { "localPosition", new[] { transform.localPosition.x, transform.localPosition.y, transform.localPosition.z } },
+                        { "localRotation", new[] { transform.localEulerAngles.x, transform.localEulerAngles.y, transform.localEulerAngles.z } },
+                        { "localScale", new[] { transform.localScale.x, transform.localScale.y, transform.localScale.z } }
+                    };
+                }
             }
 
             // Include children if depth allows
@@ -824,7 +840,7 @@ namespace UnixxtyMCP.Editor.Tools
                 {
                     if (child != null)
                     {
-                        children.Add(BuildGameObjectSummary(child.gameObject, includeTransform, maxDepth, currentDepth + 1));
+                        children.Add(BuildGameObjectSummary(child.gameObject, includeTransform, maxDepth, currentDepth + 1, compact));
                     }
                 }
                 summary["children"] = children;

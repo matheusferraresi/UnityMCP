@@ -245,10 +245,10 @@ namespace UnixxtyMCP.Editor.Tools
                             continue;
                         }
 
-                        // Extract the first line as the dedup key
-                        string messageFirstLine = ExtractFirstLine(message);
+                        // Extract the message (without stacktrace) as the dedup key
+                        string messageForDedup = ExtractMessage(message);
                         string logType = GetLogType(mode);
-                        string deduplicationKey = deduplicate ? $"{logType}:{messageFirstLine}" : null;
+                        string deduplicationKey = deduplicate ? $"{logType}:{messageForDedup}" : null;
 
                         // Deduplication: if same message as previous, increment count instead of adding new entry
                         if (deduplicate && previousEntry != null && deduplicationKey == previousMessageKey)
@@ -437,12 +437,13 @@ namespace UnixxtyMCP.Editor.Tools
             string messageText = message ?? string.Empty;
             string stacktrace = null;
 
-            // Unity combines message and stacktrace in the message field, separated by newline
-            int newlineIndex = messageText.IndexOf('\n');
-            if (newlineIndex >= 0)
+            // Unity's internal format: "message\n\nstacktrace" (double newline separates them).
+            // Single newlines within the message are part of the user's Debug.Log() content.
+            int doubleNewlineIndex = messageText.IndexOf("\n\n", StringComparison.Ordinal);
+            if (doubleNewlineIndex >= 0)
             {
-                stacktrace = messageText.Substring(newlineIndex + 1);
-                messageText = messageText.Substring(0, newlineIndex);
+                stacktrace = messageText.Substring(doubleNewlineIndex + 2);
+                messageText = messageText.Substring(0, doubleNewlineIndex);
             }
 
             // Truncate message if needed
@@ -512,17 +513,18 @@ namespace UnixxtyMCP.Editor.Tools
         }
 
         /// <summary>
-        /// Extracts the first line from a message string for deduplication.
+        /// Extracts the message portion (without stacktrace) for deduplication.
+        /// Unity format: "message\n\nstacktrace"
         /// </summary>
-        private static string ExtractFirstLine(string message)
+        private static string ExtractMessage(string message)
         {
             if (string.IsNullOrEmpty(message))
             {
                 return string.Empty;
             }
 
-            int newlineIndex = message.IndexOf('\n');
-            return newlineIndex >= 0 ? message.Substring(0, newlineIndex) : message;
+            int doubleNewlineIndex = message.IndexOf("\n\n", StringComparison.Ordinal);
+            return doubleNewlineIndex >= 0 ? message.Substring(0, doubleNewlineIndex) : message;
         }
 
         #endregion
