@@ -318,11 +318,14 @@ namespace UnixxtyMCP.Editor.Tools
 
             // After successful compilation, refresh AssetDatabase so new [MenuItem],
             // [InitializeOnLoad], and other attributes are registered immediately.
+            // Use default Refresh (not ForceSynchronousImport) to avoid triggering
+            // another compile cycle which would create an infinite loop.
             if (_currentJob.status == CompileJobStatus.Succeeded)
             {
                 EditorApplication.delayCall += () =>
                 {
-                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                    if (!EditorApplication.isCompiling)
+                        AssetDatabase.Refresh();
                 };
             }
 
