@@ -73,6 +73,28 @@ namespace UnixxtyMCP.Editor.Tools
             if (!EditorApplication.isPlaying)
                 throw MCPException.InvalidParams(
                     "simulate_input requires Play Mode. Enter play mode first with playmode_enter.");
+
+            // Auto-focus Game View so injected input is actually received by the game.
+            // Without this, input goes to whichever EditorWindow has focus (often Inspector/Console).
+            EnsureGameViewFocused();
+        }
+
+        private static void EnsureGameViewFocused()
+        {
+            try
+            {
+                var gameViewType = Type.GetType("UnityEditor.GameView,UnityEditor");
+                if (gameViewType != null)
+                {
+                    var gameView = EditorWindow.GetWindow(gameViewType);
+                    if (gameView != null)
+                        gameView.Focus();
+                }
+            }
+            catch
+            {
+                // Best effort — don't block input injection if focus fails
+            }
         }
 
         #endregion

@@ -28,7 +28,7 @@ namespace UnixxtyMCP.Editor.Tools
         /// </summary>
         [MCPTool("gameobject_manage", "Manages GameObjects: create, modify, delete, duplicate, or move_relative", Category = "GameObject", DestructiveHint = true)]
         public static object Manage(
-            [MCPParam("action", "Action to perform: create, modify, delete, duplicate, move_relative", required: true, Enum = new[] { "create", "modify", "delete", "duplicate", "move_relative" })] string action,
+            [MCPParam("action", "Action to perform: create, modify, delete, delete_filtered, duplicate, move_relative", required: true, Enum = new[] { "create", "modify", "delete", "delete_filtered", "duplicate", "move_relative" })] string action,
             [MCPParam("target", "Instance ID (int) or name/path (string) to identify target GameObject")] string target = null,
             [MCPParam("name", "Name for new object (create) or rename target (modify)")] string name = null,
             [MCPParam("parent", "Instance ID or name/path of parent GameObject")] string parent = null,
@@ -47,7 +47,8 @@ namespace UnixxtyMCP.Editor.Tools
             [MCPParam("reference_object", "Reference object for move_relative action")] string referenceObject = null,
             [MCPParam("direction", "Direction for move_relative: left, right, up, down, forward, back")] string direction = null,
             [MCPParam("distance", "Distance for move_relative")] float distance = 1f,
-            [MCPParam("world_space", "Use world space for move_relative (default: true)")] bool worldSpace = true)
+            [MCPParam("world_space", "Use world space for move_relative (default: true)")] bool worldSpace = true,
+            [MCPParam("keep_names", "For delete_filtered: comma-separated names to keep (deletes everything else)")] string keepNames = null)
         {
             if (string.IsNullOrEmpty(action))
             {
@@ -69,9 +70,10 @@ namespace UnixxtyMCP.Editor.Tools
                     "create" => HandleCreate(name, parent, position, rotation, scale, tag, layer, primitiveType, prefabPath, componentsToAdd),
                     "modify" => HandleModify(target, name, parent, position, rotation, scale, setActive, tag, layer, componentsToAdd, componentsToRemove),
                     "delete" => HandleDelete(target),
+                    "delete_filtered" => HandleDeleteFiltered(keepNames),
                     "duplicate" => HandleDuplicate(target, newName, position, offset, parent),
                     "move_relative" => HandleMoveRelative(target, referenceObject, direction, distance, offset, worldSpace),
-                    _ => throw MCPException.InvalidParams($"Unknown action: '{action}'. Valid actions: create, modify, delete, duplicate, move_relative")
+                    _ => throw MCPException.InvalidParams($"Unknown action: '{action}'. Valid actions: create, modify, delete, delete_filtered, duplicate, move_relative")
                 };
             }
             catch (MCPException)
@@ -481,19 +483,33 @@ namespace UnixxtyMCP.Editor.Tools
                 throw MCPException.InvalidParams("'target' parameter is required for delete action.");
             }
 
-            List<GameObject> targets = FindGameObjects(target, searchInactive: true);
+            // Support comma-separated targets for batch delete
+            var allTargets = new List<GameObject>();
+            var notFound = new List<string>();
+            var names = target.Contains(",")
+                ? target.Split(',').Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)).ToArray()
+                : new[] { target };
 
-            if (targets.Count == 0)
+            foreach (var name in names)
+            {
+                var found = FindGameObjects(name, searchInactive: true);
+                if (found.Count == 0)
+                    notFound.Add(name);
+                else
+                    allTargets.AddRange(found);
+            }
+
+            if (allTargets.Count == 0)
             {
                 return new
                 {
                     success = false,
-                    error = $"Target GameObject(s) '{target}' not found."
+                    error = $"Target GameObject(s) not found: {string.Join(", ", notFound)}"
                 };
             }
 
             var deletedObjects = new List<object>();
-            foreach (var targetGameObject in targets)
+            foreach (var targetGameObject in allTargets)
             {
                 if (targetGameObject != null)
                 {
@@ -517,11 +533,59 @@ namespace UnixxtyMCP.Editor.Tools
                 ? $"GameObject deleted successfully."
                 : $"{deletedObjects.Count} GameObjects deleted successfully.";
 
+            var result = new Dictionary<string, object>
+            {
+                { "success", true },
+                { "message", message },
+                { "deleted", deletedObjects }
+            };
+
+            if (notFound.Count > 0)
+                result["not_found"] = notFound;
+
+            return result;
+        }
+
+        /// <summary>
+        /// Handles delete_filtered: deletes all root GameObjects except those in keep_names.
+        /// </summary>
+        private static object HandleDeleteFiltered(string keepNames)
+        {
+            if (string.IsNullOrEmpty(keepNames))
+                throw MCPException.InvalidParams("'keep_names' parameter is required for delete_filtered. Comma-separated names of GameObjects to keep.");
+
+            var keepSet = new HashSet<string>(
+                keepNames.Split(',').Select(s => s.Trim()).Where(s => !string.IsNullOrEmpty(s)),
+                StringComparer.OrdinalIgnoreCase);
+
+            var scene = SceneManager.GetActiveScene();
+            var roots = scene.GetRootGameObjects();
+
+            var deletedObjects = new List<object>();
+            var keptObjects = new List<string>();
+
+            foreach (var root in roots)
+            {
+                if (root == null) continue;
+
+                if (keepSet.Contains(root.name))
+                {
+                    keptObjects.Add(root.name);
+                    continue;
+                }
+
+                string goName = root.name;
+                int instanceId = root.GetInstanceID();
+                Undo.DestroyObjectImmediate(root);
+                deletedObjects.Add(new { name = goName, instanceID = instanceId });
+            }
+
             return new
             {
                 success = true,
-                message,
-                deleted = deletedObjects
+                message = $"Deleted {deletedObjects.Count} GameObjects, kept {keptObjects.Count}.",
+                deleted = deletedObjects,
+                kept = keptObjects
             };
         }
 

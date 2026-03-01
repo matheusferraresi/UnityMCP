@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -117,7 +118,85 @@ namespace UnixxtyMCP.Editor.Tools
                 { "tools", toolEntries }
             };
 
+            // When query returns no matches, suggest similar tool names
+            if (toolEntries.Count == 0 && !string.IsNullOrEmpty(query))
+            {
+                var suggestions = FindSimilarToolNames(query, allDefinitions);
+                if (suggestions.Count > 0)
+                    result["did_you_mean"] = suggestions;
+            }
+
             return result;
+        }
+
+        /// <summary>
+        /// Find tool names similar to the query using word overlap and substring matching.
+        /// </summary>
+        private static List<string> FindSimilarToolNames(string query, IEnumerable<ToolDefinition> allTools)
+        {
+            string lowerQuery = query.ToLowerInvariant().Replace("-", "_").Replace(" ", "_");
+            // Split query into individual words for partial matching
+            var queryWords = lowerQuery.Split('_').Where(w => w.Length > 0).ToList();
+
+            var scored = new List<(string name, int score)>();
+
+            foreach (var tool in allTools)
+            {
+                string toolName = tool.name.ToLowerInvariant();
+                int score = 0;
+
+                // Exact substring match in name
+                if (toolName.Contains(lowerQuery))
+                    score += 10;
+
+                // Word overlap: each query word that appears in the tool name
+                foreach (var word in queryWords)
+                {
+                    if (word.Length < 2) continue;
+                    if (toolName.Contains(word))
+                        score += 3;
+                }
+
+                // Edit distance bonus for very close names (within 3 edits)
+                int dist = LevenshteinDistance(lowerQuery, toolName);
+                if (dist <= 3)
+                    score += (4 - dist) * 2;
+
+                if (score > 0)
+                    scored.Add((tool.name, score));
+            }
+
+            return scored
+                .OrderByDescending(s => s.score)
+                .Take(5)
+                .Select(s => s.name)
+                .ToList();
+        }
+
+        private static int LevenshteinDistance(string a, string b)
+        {
+            if (string.IsNullOrEmpty(a)) return b?.Length ?? 0;
+            if (string.IsNullOrEmpty(b)) return a.Length;
+
+            // Optimization: skip if lengths differ by more than threshold
+            if (Math.Abs(a.Length - b.Length) > 5) return 100;
+
+            var d = new int[a.Length + 1, b.Length + 1];
+            for (int i = 0; i <= a.Length; i++) d[i, 0] = i;
+            for (int j = 0; j <= b.Length; j++) d[0, j] = j;
+
+            for (int i = 1; i <= a.Length; i++)
+            {
+                for (int j = 1; j <= b.Length; j++)
+                {
+                    int cost = a[i - 1] == b[j - 1] ? 0 : 1;
+                    d[i, j] = Math.Min(Math.Min(
+                        d[i - 1, j] + 1,
+                        d[i, j - 1] + 1),
+                        d[i - 1, j - 1] + cost);
+                }
+            }
+            return d[a.Length, b.Length];
         }
     }
 }

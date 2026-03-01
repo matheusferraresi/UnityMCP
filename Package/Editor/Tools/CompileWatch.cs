@@ -316,6 +316,16 @@ namespace UnixxtyMCP.Editor.Tools
                 ? CompileJobStatus.Failed
                 : CompileJobStatus.Succeeded;
 
+            // After successful compilation, refresh AssetDatabase so new [MenuItem],
+            // [InitializeOnLoad], and other attributes are registered immediately.
+            if (_currentJob.status == CompileJobStatus.Succeeded)
+            {
+                EditorApplication.delayCall += () =>
+                {
+                    AssetDatabase.Refresh(ImportAssetOptions.ForceSynchronousImport);
+                };
+            }
+
             SaveToSessionState();
             _currentJob = null;
         }

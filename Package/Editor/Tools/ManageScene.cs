@@ -531,7 +531,8 @@ namespace UnixxtyMCP.Editor.Tools
         /// Captures a screenshot of the Game View.
         /// </summary>
         [MCPTool("scene_screenshot",
-            "Captures a screenshot of the Game View and saves to Assets/Screenshots/. Returns file path. " +
+            "Captures a screenshot of the Game View and saves to Assets/Screenshots/. " +
+            "Returns synchronously with file path and size. " +
             "For inline base64 (direct AI vision analysis) or Scene View capture, use vision_capture instead.",
             Category = "Scene", DestructiveHint = true)]
         public static object CaptureScreenshot(
@@ -540,22 +541,16 @@ namespace UnixxtyMCP.Editor.Tools
         {
             try
             {
-                // Validate super size
                 int resolvedSuperSize = Mathf.Clamp(superSize, 1, 4);
 
-                // Generate filename if not provided
                 string screenshotFileName = string.IsNullOrEmpty(filename)
                     ? $"Screenshot_{DateTime.Now:yyyy-MM-dd_HH-mm-ss}"
                     : filename;
 
-                // Ensure Screenshots folder exists
                 string screenshotsFolder = Path.Combine(Application.dataPath, "Screenshots");
                 if (!Directory.Exists(screenshotsFolder))
-                {
                     Directory.CreateDirectory(screenshotsFolder);
-                }
 
-                // Generate unique filename
                 string basePath = Path.Combine(screenshotsFolder, screenshotFileName);
                 string finalPath = basePath + ".png";
                 int counter = 1;
@@ -565,43 +560,96 @@ namespace UnixxtyMCP.Editor.Tools
                     counter++;
                 }
 
-                // Best effort: ensure Game View exists and repaints before capture
-                if (!Application.isBatchMode)
-                {
-                    EnsureGameView();
-                }
-
-                // Capture the screenshot
-                ScreenCapture.CaptureScreenshot(finalPath, resolvedSuperSize);
-
-                // Calculate relative path
                 string relativePath = "Assets/Screenshots/" + Path.GetFileName(finalPath);
 
-                // Schedule asset import (screenshot capture is async in play mode)
-                if (Application.isPlaying)
+                // Try synchronous RenderTexture capture first (works in both Edit and Play mode)
+                var cameras = Camera.allCameras;
+                Camera cam = Camera.main ?? (cameras.Length > 0 ? cameras[0] : null);
+
+                if (cam != null)
                 {
-                    ScheduleAssetImport(relativePath, finalPath, 30.0);
+                    // Get Game View size for accurate resolution
+                    int baseWidth = 1920;
+                    int baseHeight = 1080;
+                    try
+                    {
+                        var gameViewType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
+                        if (gameViewType != null)
+                        {
+                            var gameView = EditorWindow.GetWindow(gameViewType, false, null, false);
+                            if (gameView != null)
+                            {
+                                var pos = gameView.position;
+                                baseWidth = Mathf.Max(320, (int)pos.width);
+                                baseHeight = Mathf.Max(240, (int)pos.height);
+                            }
+                        }
+                    }
+                    catch { }
+
+                    int captureWidth = baseWidth * resolvedSuperSize;
+                    int captureHeight = baseHeight * resolvedSuperSize;
+
+                    var rt = new RenderTexture(captureWidth, captureHeight, 24, RenderTextureFormat.ARGB32);
+                    var prevRT = cam.targetTexture;
+
+                    cam.targetTexture = rt;
+                    cam.Render();
+                    cam.targetTexture = prevRT;
+
+                    var tex = new Texture2D(captureWidth, captureHeight, TextureFormat.RGB24, false);
+                    var prevActive = RenderTexture.active;
+                    RenderTexture.active = rt;
+                    tex.ReadPixels(new Rect(0, 0, captureWidth, captureHeight), 0, 0);
+                    tex.Apply();
+                    RenderTexture.active = prevActive;
+
+                    byte[] png = tex.EncodeToPNG();
+                    UnityEngine.Object.DestroyImmediate(tex);
+                    UnityEngine.Object.DestroyImmediate(rt);
+
+                    File.WriteAllBytes(finalPath, png);
+
+                    // Import into AssetDatabase
+                    AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceSynchronousImport);
+
+                    return new
+                    {
+                        success = true,
+                        message = "Screenshot captured.",
+                        path = relativePath,
+                        fullPath = finalPath,
+                        width = captureWidth,
+                        height = captureHeight,
+                        file_size_bytes = png.Length,
+                        superSize = resolvedSuperSize
+                    };
                 }
+
+                // Fallback: no camera available, use ScreenCapture (async)
+                if (!Application.isBatchMode)
+                    EnsureGameView();
+
+                ScreenCapture.CaptureScreenshot(finalPath, resolvedSuperSize);
+
+                if (Application.isPlaying)
+                    ScheduleAssetImport(relativePath, finalPath, 30.0);
                 else
-                {
-                    // In edit mode, we need to wait a bit for the file to be written
                     EditorApplication.delayCall += () =>
                     {
                         if (File.Exists(finalPath))
-                        {
                             AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceSynchronousImport);
-                        }
                     };
-                }
 
                 return new
                 {
                     success = true,
-                    message = "Screenshot capture initiated.",
+                    message = "Screenshot capture initiated (no camera found for sync capture).",
                     path = relativePath,
                     fullPath = finalPath,
                     superSize = resolvedSuperSize,
-                    isAsync = Application.isPlaying
+                    isAsync = true,
+                    hint = "File may not exist yet. Wait ~500ms before reading."
                 };
             }
             catch (Exception ex)
