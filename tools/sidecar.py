@@ -17,8 +17,11 @@ Usage:
 """
 
 import argparse
+import ctypes
+import ctypes.wintypes
 import json
 import logging
+import os
 import sys
 import time
 import threading
@@ -39,6 +42,207 @@ HEALTH_CHECK_INTERVAL = 5  # seconds between Unity health checks
 REQUEST_TIMEOUT = 60  # seconds to wait for Unity response (longer than native 30s)
 RETRY_INTERVAL = 1  # seconds between retries when Unity is down
 MAX_RETRIES = 30  # max retries before giving up on a queued request
+
+
+# ─── Window Focus Management (Windows only) ────────────────────────────────
+
+# Focus actions the sidecar handles directly (not forwarded to Unity)
+FOCUS_ACTIONS = {"focus", "restore_focus", "set_auto_focus", "get_settings"}
+
+# Win32 API via ctypes
+if sys.platform == "win32":
+    user32 = ctypes.windll.user32
+    kernel32 = ctypes.windll.kernel32
+
+    user32.GetForegroundWindow.restype = ctypes.wintypes.HWND
+    user32.SetForegroundWindow.argtypes = [ctypes.wintypes.HWND]
+    user32.SetForegroundWindow.restype = ctypes.wintypes.BOOL
+    user32.ShowWindow.argtypes = [ctypes.wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = ctypes.wintypes.BOOL
+    user32.GetWindowThreadProcessId.argtypes = [ctypes.wintypes.HWND, ctypes.POINTER(ctypes.wintypes.DWORD)]
+    user32.GetWindowThreadProcessId.restype = ctypes.wintypes.DWORD
+    kernel32.GetCurrentThreadId.restype = ctypes.wintypes.DWORD
+    user32.AttachThreadInput.argtypes = [ctypes.wintypes.DWORD, ctypes.wintypes.DWORD, ctypes.wintypes.BOOL]
+    user32.AttachThreadInput.restype = ctypes.wintypes.BOOL
+
+    SW_RESTORE = 9
+    SW_SHOW = 5
+
+# Sidecar-managed focus state
+_previous_foreground_window = 0
+_auto_focus_enabled = False
+_settings_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), ".sidecar_settings.json")
+
+
+def _load_settings():
+    """Load persistent settings from disk."""
+    global _auto_focus_enabled
+    try:
+        with open(_settings_file, "r") as f:
+            settings = json.load(f)
+            _auto_focus_enabled = settings.get("auto_focus", False)
+    except (FileNotFoundError, json.JSONDecodeError):
+        pass
+
+
+def _save_settings():
+    """Save persistent settings to disk."""
+    try:
+        with open(_settings_file, "w") as f:
+            json.dump({"auto_focus": _auto_focus_enabled}, f)
+    except Exception as e:
+        logger.warning(f"Failed to save settings: {e}")
+
+
+def _find_unity_hwnd():
+    """Find the Unity Editor main window handle by scanning for its process."""
+    if sys.platform != "win32":
+        return 0
+
+    import subprocess
+    try:
+        # Find Unity process(es)
+        result = subprocess.run(
+            ["tasklist", "/FI", "IMAGENAME eq Unity.exe", "/FO", "CSV", "/NH"],
+            capture_output=True, text=True, timeout=5
+        )
+        for line in result.stdout.strip().split("\n"):
+            if "Unity.exe" in line:
+                parts = line.strip('"').split('","')
+                if len(parts) >= 2:
+                    pid = int(parts[1])
+                    # Enumerate windows to find one belonging to this PID
+                    hwnd = _find_window_by_pid(pid)
+                    if hwnd:
+                        return hwnd
+    except Exception as e:
+        logger.debug(f"Failed to find Unity window: {e}")
+    return 0
+
+
+def _find_window_by_pid(target_pid):
+    """Enumerate top-level windows and find one matching the target PID."""
+    result = [0]
+
+    @ctypes.WINFUNCTYPE(ctypes.wintypes.BOOL, ctypes.wintypes.HWND, ctypes.wintypes.LPARAM)
+    def enum_callback(hwnd, lparam):
+        pid = ctypes.wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        if pid.value == target_pid and user32.IsWindowVisible(hwnd):
+            # Check it has a title (main window, not child)
+            length = user32.GetWindowTextLengthW(hwnd)
+            if length > 0:
+                result[0] = hwnd
+                return False  # Stop enumeration
+        return True
+
+    user32.EnumWindows(enum_callback, 0)
+    return result[0]
+
+
+def _set_foreground_with_attach(hwnd):
+    """SetForegroundWindow with AttachThreadInput trick to bypass Windows restriction."""
+    fg_hwnd = user32.GetForegroundWindow()
+    fg_thread = user32.GetWindowThreadProcessId(fg_hwnd, None)
+    cur_thread = kernel32.GetCurrentThreadId()
+
+    attached = False
+    if fg_thread != cur_thread:
+        attached = bool(user32.AttachThreadInput(cur_thread, fg_thread, True))
+
+    user32.ShowWindow(hwnd, SW_RESTORE)
+    focused = bool(user32.SetForegroundWindow(hwnd))
+
+    if attached:
+        user32.AttachThreadInput(cur_thread, fg_thread, False)
+
+    return focused
+
+
+def handle_focus_action(action, params):
+    """Handle focus-related manage_editor actions directly in the sidecar."""
+    global _previous_foreground_window, _auto_focus_enabled
+
+    if sys.platform != "win32":
+        return {"success": False, "error": "Window focus management is only supported on Windows."}
+
+    if action == "focus":
+        _previous_foreground_window = user32.GetForegroundWindow()
+        unity_hwnd = _find_unity_hwnd()
+
+        if not unity_hwnd:
+            return {"success": False, "error": "Could not find Unity Editor window. Is Unity running?"}
+
+        focused = _set_foreground_with_attach(unity_hwnd)
+        logger.info(f"Focus Unity: {'success' if focused else 'failed'}")
+
+        return {
+            "success": True,
+            "focused": focused,
+            "previous_window_saved": _previous_foreground_window != 0,
+            "handled_by": "sidecar",
+            "message": "Unity Editor focused. Use 'restore_focus' to return to previous window."
+                if focused else "Focus request sent but may not have succeeded (Windows restrictions)."
+        }
+
+    elif action == "restore_focus":
+        if _previous_foreground_window == 0:
+            return {
+                "success": False,
+                "error": "No previous window saved. Call 'focus' first to save the previous window."
+            }
+
+        user32.ShowWindow(_previous_foreground_window, SW_SHOW)
+        restored = bool(user32.SetForegroundWindow(_previous_foreground_window))
+        _previous_foreground_window = 0
+        logger.info(f"Restore focus: {'success' if restored else 'failed'}")
+
+        return {
+            "success": True,
+            "restored": restored,
+            "handled_by": "sidecar",
+            "message": "Focus restored to previous window."
+                if restored else "Restore request sent but may not have succeeded (Windows restrictions)."
+        }
+
+    elif action == "set_auto_focus":
+        enabled = params.get("enabled", False)
+        _auto_focus_enabled = bool(enabled)
+        _save_settings()
+        logger.info(f"Auto-focus {'enabled' if _auto_focus_enabled else 'disabled'}")
+
+        return {
+            "success": True,
+            "auto_focus": _auto_focus_enabled,
+            "handled_by": "sidecar",
+            "message": "Auto-focus enabled. Unity will be focused automatically when needed."
+                if _auto_focus_enabled else "Auto-focus disabled."
+        }
+
+    elif action == "get_settings":
+        return {
+            "success": True,
+            "auto_focus": _auto_focus_enabled,
+            "has_previous_window": _previous_foreground_window != 0,
+            "platform": "windows",
+            "handled_by": "sidecar"
+        }
+
+    return None  # Not a focus action
+
+
+def is_focus_action(parsed_request):
+    """Check if a parsed JSON-RPC request is a focus-related manage_editor call."""
+    if parsed_request.get("method") != "tools/call":
+        return False, None, None
+    params = parsed_request.get("params", {})
+    if params.get("name") != "manage_editor":
+        return False, None, None
+    args = params.get("arguments", {})
+    action = args.get("action", "")
+    if action in FOCUS_ACTIONS:
+        return True, action, args
+    return False, None, None
 
 
 # ─── Unity Health Check ─────────────────────────────────────────────────────
@@ -118,6 +322,7 @@ class SidecarHandler(BaseHTTPRequestHandler):
                 "sidecar": "running",
                 "unity_connected": unity_connected,
                 "unity_port": unity_port,
+                "auto_focus": _auto_focus_enabled,
             }
             body = json.dumps(status).encode()
             self.send_response(200)
@@ -129,12 +334,13 @@ class SidecarHandler(BaseHTTPRequestHandler):
             self.send_error(404)
 
     def do_POST(self):
-        """Forward JSON-RPC requests to Unity."""
+        """Forward JSON-RPC requests to Unity, intercepting focus actions."""
         content_length = int(self.headers.get("Content-Length", 0))
         body_bytes = self.rfile.read(content_length)
 
-        # Parse request ID for logging
+        # Parse request for routing
         request_id = "?"
+        parsed = None
         try:
             parsed = json.loads(body_bytes)
             request_id = parsed.get("id", "?")
@@ -145,6 +351,28 @@ class SidecarHandler(BaseHTTPRequestHandler):
             logger.info(f"→ [{request_id}] {method}{tool_name}")
         except Exception:
             pass
+
+        # Check if this is a focus action we handle in the sidecar
+        if parsed:
+            is_focus, action, args = is_focus_action(parsed)
+            if is_focus:
+                logger.info(f"  [{request_id}] Handling focus action '{action}' in sidecar")
+                result = handle_focus_action(action, args)
+                if result is not None:
+                    response = json.dumps({
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "content": [{"type": "text", "text": json.dumps(result, indent=2)}]
+                        },
+                        "id": request_id
+                    }).encode()
+                    self.send_response(200)
+                    self.send_header("Content-Type", "application/json")
+                    self.send_header("Content-Length", str(len(response)))
+                    self.end_headers()
+                    self.wfile.write(response)
+                    logger.info(f"← [{request_id}] {len(response)} bytes (sidecar-handled)")
+                    return
 
         try:
             response_bytes = forward_with_retry(body_bytes, request_id)
@@ -207,6 +435,9 @@ def main():
     args = parser.parse_args()
 
     unity_port = args.unity_port
+
+    # Load persistent settings (auto-focus, etc.)
+    _load_settings()
 
     # Setup logging
     log_level = logging.DEBUG if args.verbose else logging.INFO

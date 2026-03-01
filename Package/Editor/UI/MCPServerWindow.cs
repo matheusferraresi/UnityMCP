@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
+using System.Threading;
 using UnityEditor;
 using UnityEngine;
 using UnixxtyMCP.Editor.Core;
@@ -24,6 +26,12 @@ namespace UnixxtyMCP.Editor.UI
         private const string DocumentationUrl = "https://github.com/anthropics/anthropic-cookbook/tree/main/misc/model_context_protocol";
         private const string VerboseLoggingPrefKey = "UnixxtyMCP_VerboseLogging";
         private const string ActivityDetailPrefKey = "UnixxtyMCP_ActivityDetail";
+        private const int SIDECAR_PORT = 8080;
+        private const float SIDECAR_CHECK_INTERVAL = 5f;
+
+        private bool _sidecarConnected;
+        private double _lastSidecarCheck;
+        private bool _sidecarCheckInProgress;
 
         [MenuItem("Window/Unixxty MCP")]
         public static void ShowWindow()
@@ -140,37 +148,113 @@ namespace UnixxtyMCP.Editor.UI
             }
         }
 
+        private void CheckSidecarStatus()
+        {
+            if (_sidecarCheckInProgress) return;
+            if (EditorApplication.timeSinceStartup - _lastSidecarCheck < SIDECAR_CHECK_INTERVAL) return;
+
+            _lastSidecarCheck = EditorApplication.timeSinceStartup;
+            _sidecarCheckInProgress = true;
+
+            // Check sidecar on a background thread to avoid blocking the editor
+            ThreadPool.QueueUserWorkItem(_ =>
+            {
+                bool connected = false;
+                try
+                {
+                    var request = (HttpWebRequest)WebRequest.Create($"http://localhost:{SIDECAR_PORT}/status");
+                    request.Timeout = 2000;
+                    request.Method = "GET";
+                    using (var response = (HttpWebResponse)request.GetResponse())
+                    {
+                        connected = response.StatusCode == HttpStatusCode.OK;
+                    }
+                }
+                catch { }
+
+                // Update state on main thread
+                EditorApplication.delayCall += () =>
+                {
+                    _sidecarConnected = connected;
+                    _sidecarCheckInProgress = false;
+                    Repaint();
+                };
+            });
+        }
+
         private void DrawServerInfo()
         {
             bool isRunning = MCPProxy.IsInitialized;
-            int port = MCPServer.Instance?.Port ?? 8081;
+            int unityPort = MCPServer.Instance?.Port ?? 8081;
 
-            string endpoint;
-            if (MCPProxy.RemoteAccessEnabled)
-            {
-                string lanIp = NetworkUtils.GetLanIpAddress();
-                endpoint = $"https://{lanIp}:{port}/";
-            }
-            else
-            {
-                endpoint = $"http://localhost:{port}/";
-            }
+            // Periodically check sidecar
+            CheckSidecarStatus();
 
             EditorGUILayout.LabelField("Server Information", EditorStyles.boldLabel);
 
             EditorGUI.indentLevel++;
 
-            // Endpoint with copy button
+            // Sidecar status
             EditorGUILayout.BeginHorizontal();
-            EditorGUILayout.LabelField("Endpoint", endpoint);
+            EditorGUILayout.PrefixLabel("Sidecar");
+            if (_sidecarConnected)
+            {
+                GUI.color = Color.green;
+                GUILayout.Label($"\u25CF Running (port {SIDECAR_PORT})");
+            }
+            else
+            {
+                GUI.color = new Color(1f, 0.7f, 0.3f); // orange
+                GUILayout.Label($"\u25CB Not detected (port {SIDECAR_PORT})");
+            }
+            GUI.color = Color.white;
+            EditorGUILayout.EndHorizontal();
+
+            // Unity direct port
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.PrefixLabel("Unity Direct");
+            if (isRunning)
+            {
+                GUI.color = Color.green;
+                GUILayout.Label($"\u25CF Listening (port {unityPort})");
+            }
+            else
+            {
+                GUI.color = Color.gray;
+                GUILayout.Label($"\u25CB Stopped (port {unityPort})");
+            }
+            GUI.color = Color.white;
+            EditorGUILayout.EndHorizontal();
+
+            // Connection chain
+            EditorGUILayout.Space(4);
+            string clientEndpoint = _sidecarConnected
+                ? $"http://localhost:{SIDECAR_PORT}/"
+                : $"http://localhost:{unityPort}/";
+            EditorGUILayout.BeginHorizontal();
+            EditorGUILayout.LabelField("Client Endpoint", clientEndpoint);
             if (GUILayout.Button("Copy", GUILayout.Width(50)))
             {
-                EditorGUIUtility.systemCopyBuffer = endpoint;
-                if (MCPProxy.VerboseLogging) Debug.Log($"[MCPServerWindow] Copied endpoint to clipboard: {endpoint}");
+                EditorGUIUtility.systemCopyBuffer = clientEndpoint;
             }
             EditorGUILayout.EndHorizontal();
 
+            // Architecture hint
+            if (_sidecarConnected)
+            {
+                EditorGUILayout.HelpBox(
+                    $"Claude Code \u2192 sidecar:{SIDECAR_PORT} \u2192 Unity:{unityPort}\nSidecar handles retries during restarts and domain reloads.",
+                    MessageType.Info);
+            }
+            else
+            {
+                EditorGUILayout.HelpBox(
+                    $"Sidecar not running. Start it with:\npython tools/sidecar.py\n\nDirect connection: Claude Code \u2192 Unity:{unityPort}",
+                    MessageType.Warning);
+            }
+
             // Tool and resource counts
+            EditorGUILayout.Space(4);
             int toolCount = ToolRegistry.Count;
             int resourceCount = ResourceRegistry.Count;
             EditorGUILayout.LabelField("Tools", toolCount.ToString());
