@@ -129,6 +129,31 @@ Or by tag: `{"action": "delete_by_tag", "tag": "EditorOnly"}`
 
 ---
 
+## Issue 19a: Large Responses — save_to_file Option for Any Tool (MEDIUM)
+
+**Problem**: Even with `compact` mode, deeply nested hierarchies or large console dumps can exceed the 262KB MCP response limit. The agent has no way to receive oversized data.
+
+**Proposed Fix**: Add a generic `save_to_file` parameter to tools that produce large output (`scene_get_hierarchy`, `console_read`, `search_tools`). When set, the tool writes the full JSON result to a `.txt` file in the project (e.g., `Assets/_MCP_Output/hierarchy.txt`) and returns only the file path + summary stats. The agent can then use the `Read` tool to read the file line by line, paginating through arbitrarily large results.
+
+Example response when `save_to_file` is used:
+```json
+{
+  "success": true,
+  "saved_to": "Assets/_MCP_Output/hierarchy_2026-03-01_12-30-00.txt",
+  "file_size_bytes": 327000,
+  "total_items": 142,
+  "hint": "Use Read tool to inspect the file. Too large for MCP response."
+}
+```
+
+**Benefits**:
+- Works for any tool, not just hierarchy
+- Agent can read specific line ranges with offset/limit
+- No MCP protocol changes needed
+- File persists for re-reading across tool calls
+
+---
+
 ## Issue 20: manage_material get_info Cannot Inspect Scene Object Renderers (MEDIUM)
 
 **Problem**: `manage_material get_info` requires `material_path` (an asset path), but there's no way to inspect what shader/properties a scene object's renderer is using. Tried `target: "Mech1/MechModel/.../Object_7"` but got error about missing `material_path`.
@@ -177,9 +202,10 @@ Or by tag: `{"action": "delete_by_tag", "tag": "EditorOnly"}`
 | 16 | No batch delete for GameObjects | MEDIUM | Small | FIXED (652b4b4) |
 | 17 | No "delete all except" operation | LOW | Small | FIXED (652b4b4) |
 | 18 | console_read persistence across reload | LOW | Trivial | Open |
-| 19 | scene_get_hierarchy too large for deep models | HIGH | Medium | Open |
+| 19 | scene_get_hierarchy too large for deep models | HIGH | Medium | PARTIAL (e5622a1) — compact mode |
+| 19a | Large responses: save_to_file option for any tool | MEDIUM | Medium | Open |
 | 20 | manage_material can't inspect scene renderers | MEDIUM | Small | Open |
-| 21 | console_read truncates multi-line messages | MEDIUM | Small | Open |
+| 21 | console_read truncates multi-line messages | MEDIUM | Small | FIXED (e5622a1) |
 
 ### Priority Clusters
 
