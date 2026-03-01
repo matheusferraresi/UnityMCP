@@ -64,7 +64,8 @@ namespace UnixxtyMCP.Editor.Tools
             [MCPParam("action", "Action to perform", required: true,
                 Enum = new[] { "play", "pause", "stop", "set_active_tool",
                                "add_tag", "remove_tag", "add_layer", "remove_layer",
-                               "focus", "restore_focus", "set_auto_focus", "get_settings" })]
+                               "focus", "restore_focus", "set_auto_focus", "get_settings",
+                               "reload_domain", "restart" })]
             string action,
             [MCPParam("tool_name", "Tool name for set_active_tool: View, Move, Rotate, Scale, Rect, Transform")] string toolName = null,
             [MCPParam("tag_name", "Tag name for add_tag/remove_tag")] string tagName = null,
@@ -98,10 +99,12 @@ namespace UnixxtyMCP.Editor.Tools
                     "restore_focus" => HandleRestoreFocus(),
                     "set_auto_focus" => HandleSetAutoFocus(enabled),
                     "get_settings" => HandleGetSettings(),
+                    "reload_domain" => HandleReloadDomain(),
+                    "restart" => HandleRestart(),
                     _ => new
                     {
                         success = false,
-                        error = $"Unknown action: '{action}'. Valid actions are: play, pause, stop, set_active_tool, add_tag, remove_tag, add_layer, remove_layer, focus, restore_focus, set_auto_focus, get_settings."
+                        error = $"Unknown action: '{action}'. Valid actions are: play, pause, stop, set_active_tool, add_tag, remove_tag, add_layer, remove_layer, focus, restore_focus, set_auto_focus, get_settings, reload_domain, restart."
                     }
                 };
             }
@@ -785,6 +788,69 @@ namespace UnixxtyMCP.Editor.Tools
             }
             catch { }
 #endif
+        }
+
+        #endregion
+
+        #region Domain Reload & Restart
+
+        private static object HandleReloadDomain()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                return new
+                {
+                    success = false,
+                    error = "Cannot reload domain while in Play Mode. Stop play mode first."
+                };
+            }
+
+            if (EditorApplication.isCompiling)
+            {
+                return new
+                {
+                    success = false,
+                    error = "Already compiling. Wait for compilation to finish."
+                };
+            }
+
+            // Schedule the reload on next editor update so the response gets sent first
+            EditorApplication.delayCall += () =>
+            {
+                EditorUtility.RequestScriptReload();
+            };
+
+            return new
+            {
+                success = true,
+                message = "Domain reload scheduled. Scripts will recompile and assemblies will reload. MCP connection may briefly drop during reload."
+            };
+        }
+
+        private static object HandleRestart()
+        {
+            if (EditorApplication.isPlaying)
+            {
+                return new
+                {
+                    success = false,
+                    error = "Cannot restart while in Play Mode. Stop play mode first."
+                };
+            }
+
+            string projectPath = System.IO.Path.GetDirectoryName(Application.dataPath);
+
+            // Schedule the restart on next editor update so the response gets sent first
+            EditorApplication.delayCall += () =>
+            {
+                EditorApplication.OpenProject(projectPath);
+            };
+
+            return new
+            {
+                success = true,
+                message = $"Unity Editor restart scheduled. The editor will close and reopen project at '{projectPath}'. MCP connection will drop — reconnect after Unity restarts."
+            };
         }
 
         #endregion
