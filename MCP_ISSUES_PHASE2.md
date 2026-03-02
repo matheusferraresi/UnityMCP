@@ -231,6 +231,36 @@ Added `hasRetried` field to `CompileJob` and contextual hints in `get_job` respo
 
 ---
 
+## Issue 25: No Way to Run Arbitrary Editor C# Outside Play Mode (HIGH)
+
+**Problem**: There's no MCP tool to execute arbitrary C# code in the Unity Editor outside of Play Mode. `hot_patch` requires Play Mode (Harmony patching). `console_write` only logs. This means common editor operations like modifying Build Settings, Project Settings, or Editor Preferences require workarounds.
+
+**Discovered when**: An agent needed to add a scene to `EditorBuildSettings.scenes` at a specific index. The ideal call would be something like:
+```json
+{"tool": "editor_eval", "code": "var scenes = EditorBuildSettings.scenes.ToList(); scenes.Insert(0, new EditorBuildSettingsScene(\"Assets/_Project/Scenes/MainMenuScene.unity\", true)); EditorBuildSettings.scenes = scenes.ToArray();"}
+```
+
+**Current workarounds** (all suboptimal):
+1. **Edit serialized YAML directly** — fragmatic but fragile, requires knowing Unity's YAML format, no validation
+2. **Create temp `[MenuItem]` script → compile → execute → delete** — works but 4+ tool calls and a full recompile for a one-liner
+3. **`manage_scriptable_object`** — only works for ScriptableObjects, not ProjectSettings
+
+**Impact**: HIGH — ProjectSettings and EditorBuildSettings modifications come up regularly (adding scenes to build, changing player settings, toggling compilation defines). Without this, agents either edit raw YAML (risky) or create throwaway scripts (slow).
+
+**Proposed Fix**: Add an `editor_eval` (or `run_editor_code`) tool that:
+- Accepts a C# code string
+- Compiles it at runtime via Roslyn (already available in the plugin for `validate_script_advanced`)
+- Executes it on the main thread via `EditorApplication.delayCall`
+- Returns the result (or any exceptions)
+- Restricted to Editor-only APIs (not available in Play Mode builds)
+
+**Safety considerations**:
+- Mark as `DestructiveHint = true`
+- Log all executed code to Console for auditability
+- Consider a `dry_run` mode that compiles but doesn't execute
+
+---
+
 ## Summary
 
 | # | Issue | Priority | Effort | Status |
@@ -250,6 +280,7 @@ Added `hasRetried` field to `CompileJob` and contextual hints in `get_job` respo
 | 22 | compile_and_watch CS2001 auto-refresh+retry | HIGH | Small | FIXED |
 | 23 | unity_refresh wait_for_ready hint improvement | MEDIUM | Trivial | FIXED |
 | 24 | compile_and_watch get_job domain reload hint | LOW | Trivial | FIXED |
+| 25 | No editor_eval tool for arbitrary editor C# | HIGH | Medium | OPEN |
 
 ### Priority Clusters
 
