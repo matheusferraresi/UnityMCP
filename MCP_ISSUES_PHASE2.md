@@ -280,7 +280,7 @@ Added `hasRetried` field to `CompileJob` and contextual hints in `get_job` respo
 | 22 | compile_and_watch CS2001 auto-refresh+retry | HIGH | Small | FIXED |
 | 23 | unity_refresh wait_for_ready hint improvement | MEDIUM | Trivial | FIXED |
 | 24 | compile_and_watch get_job domain reload hint | LOW | Trivial | FIXED |
-| 25 | No editor_eval tool for arbitrary editor C# | HIGH | Medium | OPEN |
+| 25 | No editor_eval tool for arbitrary editor C# | HIGH | Medium | FIXED |
 
 ### Priority Clusters
 

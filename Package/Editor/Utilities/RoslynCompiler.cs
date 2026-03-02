@@ -167,11 +167,63 @@ public static class __HotPatchTemp {{
         }
 
         /// <summary>
+        /// Result of a Roslyn compilation with diagnostics.
+        /// </summary>
+        internal class CompileResult
+        {
+            public byte[] assemblyBytes;
+            public List<string> errors = new List<string>();
+            public bool success;
+        }
+
+        /// <summary>
+        /// Compile C# source code and return structured diagnostics.
+        /// </summary>
+        internal static CompileResult CompileWithDiagnostics(string sourceCode)
+        {
+            var result = new CompileResult();
+            if (!IsAvailable)
+            {
+                result.errors.Add($"Roslyn not available: {_loadError}");
+                return result;
+            }
+
+            try
+            {
+                var bytes = CompileInternal(sourceCode, out var errors);
+                if (bytes != null)
+                {
+                    result.assemblyBytes = bytes;
+                    result.success = true;
+                }
+                else
+                {
+                    result.errors = errors;
+                }
+            }
+            catch (Exception ex)
+            {
+                result.errors.Add($"Compilation exception: {ex.Message}");
+            }
+            return result;
+        }
+
+        /// <summary>
         /// Compile C# source code into an in-memory assembly. Returns raw bytes or null on failure.
         /// All Roslyn calls use reflection to avoid compile-time dependency.
         /// </summary>
-        private static byte[] Compile(string sourceCode)
+        internal static byte[] Compile(string sourceCode)
         {
+            var bytes = CompileInternal(sourceCode, out var errors);
+            if (bytes == null && errors.Count > 0)
+                Debug.LogError($"[RoslynCompiler] Compilation failed:\n{string.Join("\n", errors)}");
+            return bytes;
+        }
+
+        private static byte[] CompileInternal(string sourceCode, out List<string> outErrors)
+        {
+            outErrors = new List<string>();
+
             // Convert source string to SourceText first (required by some Roslyn builds)
             var sourceTextType = _codeAnalysisAssembly.GetType("Microsoft.CodeAnalysis.Text.SourceText");
             var fromMethod = sourceTextType.GetMethods(BindingFlags.Public | BindingFlags.Static)
@@ -342,7 +394,6 @@ public static class __HotPatchTemp {{
                     var errorSeverity = _codeAnalysisAssembly.GetType("Microsoft.CodeAnalysis.DiagnosticSeverity");
                     var errorValue = Enum.Parse(errorSeverity, "Error");
 
-                    var errors = new List<string>();
                     foreach (var diag in diagnostics)
                     {
                         var sevProp = diag.GetType().GetProperty("Severity");
@@ -356,11 +407,10 @@ public static class __HotPatchTemp {{
                                     ? Array.Empty<object>()
                                     : new object[] { null })
                                 : diag.ToString();
-                            errors.Add(msg);
+                            outErrors.Add(msg);
                         }
                     }
 
-                    Debug.LogError($"[RoslynCompiler] Compilation failed:\n{string.Join("\n", errors)}");
                     return null;
                 }
 
