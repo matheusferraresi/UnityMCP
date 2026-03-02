@@ -52,11 +52,25 @@ Claude Code ──HTTP:8080──→ Sidecar (Python) ──HTTP:8081──→ U
 **Key inversion**: Unity is the client, sidecar owns the port permanently.
 
 ### Step 1: Transparent Proxy (implemented)
-- `tools/sidecar.py` — Python stdlib, ~200 lines
+- `tools/sidecar.py` — Python stdlib, ~740 lines
 - Accepts HTTP on 8080, forwards to Unity on 8081
 - Retries on Unity disconnect (domain reload, restart)
-- Health endpoint: `GET /status`
+- Health endpoint: `GET /status` (includes exclusive op info)
 - Persistent logging
+- Window focus management (Win32 `SetForegroundWindow` via ctypes)
+- Multi-instance discovery (scans ports 8081-8090)
+- `tools/gui.py` — tkinter dashboard that manages the sidecar subprocess
+
+### Step 1.5: Exclusive Operation Coordinator (implemented)
+- Prevents multi-agent conflicts when multiple Claude agents share one Unity editor
+- Three exclusive categories: **compile**, **playmode**, **scene**
+- Tools classified: `compile_and_watch`, `recompile_scripts`, `unity_refresh(compile=request)`, `playmode_enter/exit`, `debug_play`, `scene_load`, `scene_create`
+- Same-category coalescing: second `compile_and_watch(start)` attaches to existing job_id
+- Cross-category blocking: returns `retry_after_ms: 3000` hint
+- Async lock lifecycle: lock acquired on `compile_and_watch(start)`, job_id extracted from response, released when `get_job` returns `succeeded` or `failed`
+- Sync lock lifecycle: released immediately after Unity responds
+- Safety timeout: 120s auto-expiry on stale locks
+- All coordination responses include `"coordinated_by": "sidecar"` marker
 
 ### Step 2: WebSocket Client (future)
 - Unity connects OUT to sidecar via WebSocket
@@ -107,8 +121,9 @@ Transport and orchestration only:
 
 | File | Purpose |
 |------|---------|
-| `tools/sidecar.py` | External proxy server |
-| `tools/dev.py` | Dev runner — auto-reloads sidecar + triggers Unity recompile on file changes |
+| `tools/sidecar.py` | External proxy server (port 8080 → Unity 8081), includes exclusive op coordinator |
+| `tools/gui.py` | Tkinter GUI dashboard — manages sidecar subprocess, live logs, file watching |
+| `tools/dev.py` | Legacy dev runner (superseded by gui.py) |
 | `tools/wait-for-unity.py` | CLI tool for checking Unity readiness |
 | `Package/Editor/Core/MCPProxy.cs` | C# proxy (now on port 8081) |
 | `Proxy~/proxy.c` | Native DLL (to be removed in Step 2) |

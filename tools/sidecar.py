@@ -47,6 +47,190 @@ MAX_RETRIES = 30  # max retries before giving up on a queued request
 DISCOVERY_PORTS = range(8081, 8091)  # scan ports 8081-8090
 unity_instances = {}
 
+# ─── Exclusive Operation Coordinator ─────────────────────────────────────────
+# Prevents multi-agent conflicts for operations that must not overlap
+# (compilation, play mode transitions, scene loads).
+
+_exclusive_lock = threading.Lock()
+_exclusive_op = None  # {category, tool, job_id, started, request_id}
+LOCK_TIMEOUT = 120  # seconds — auto-expire stale locks
+
+EXCLUSIVE_TOOLS = {
+    "compile_and_watch": {"category": "compile", "async": True,
+                          "condition": lambda args: args.get("action", "start") == "start"},
+    "recompile_scripts": {"category": "compile", "async": False},
+    "unity_refresh":     {"category": "compile", "async": False,
+                          "condition": lambda args: args.get("compile") == "request"},
+    "playmode_enter":    {"category": "playmode", "async": False},
+    "playmode_exit":     {"category": "playmode", "async": False},
+    "debug_play":        {"category": "playmode", "async": False},
+    "scene_load":        {"category": "scene", "async": False},
+    "scene_create":      {"category": "scene", "async": False},
+}
+
+CATEGORY_LABELS = {
+    "compile": "Compilation",
+    "playmode": "Play mode transition",
+    "scene": "Scene operation",
+}
+
+
+def _is_lock_expired():
+    """Check if the current exclusive lock has exceeded LOCK_TIMEOUT."""
+    if _exclusive_op is None:
+        return False
+    return (time.time() - _exclusive_op["started"]) > LOCK_TIMEOUT
+
+
+def classify_tool(name, args):
+    """Return the exclusive category for a tool, or None if not exclusive."""
+    spec = EXCLUSIVE_TOOLS.get(name)
+    if spec is None:
+        return None
+    condition = spec.get("condition")
+    if condition and not condition(args):
+        return None
+    return spec["category"]
+
+
+def try_acquire_exclusive(tool_name, category, args, request_id):
+    """
+    Try to acquire the exclusive lock for an operation.
+    Returns (allowed, response_override).
+      - allowed=True, response_override=None  → forward to Unity
+      - allowed=False, response_override=dict → return this to the agent immediately
+    """
+    global _exclusive_op
+
+    with _exclusive_lock:
+        # Auto-expire stale locks
+        if _exclusive_op is not None and _is_lock_expired():
+            logger.warning(
+                f"  [{request_id}] Expired stale exclusive lock: "
+                f"{_exclusive_op['tool']} (held {time.time() - _exclusive_op['started']:.0f}s)"
+            )
+            _exclusive_op = None
+
+        if _exclusive_op is None:
+            # No active exclusive op — acquire lock
+            _exclusive_op = {
+                "category": category,
+                "tool": tool_name,
+                "job_id": None,
+                "started": time.time(),
+                "request_id": request_id,
+            }
+            logger.info(f"  [{request_id}] Acquired exclusive lock: {category}/{tool_name}")
+            return True, None
+
+        active = _exclusive_op
+
+        # Same category — redirect or coalesce
+        if active["category"] == category:
+            # compile_and_watch(start) while another compile is active → attach to existing job
+            if tool_name == "compile_and_watch" and args.get("action") == "start":
+                job_id = active.get("job_id") or "pending"
+                logger.info(
+                    f"  [{request_id}] Attached to existing {active['tool']} "
+                    f"(job_id={job_id}, started by [{active['request_id']}])"
+                )
+                return False, {
+                    "success": True,
+                    "message": "Attached to compilation started by another agent",
+                    "job_id": job_id,
+                    "status": "compiling",
+                    "coordinated_by": "sidecar",
+                }
+
+            # Same category, different tool (e.g. recompile_scripts while compile_and_watch active)
+            label = CATEGORY_LABELS.get(category, category)
+            logger.info(f"  [{request_id}] Blocked by active {active['tool']} (same category: {category})")
+            return False, {
+                "success": False,
+                "error": f"{label} already in progress ({active['tool']}). "
+                         f"Wait for it to complete before starting {tool_name}.",
+                "retry_after_ms": 3000,
+                "coordinated_by": "sidecar",
+            }
+
+        # Different category — block with hint
+        active_label = CATEGORY_LABELS.get(active["category"], active["category"])
+        logger.info(
+            f"  [{request_id}] Blocked: {tool_name} ({category}) "
+            f"cannot run during {active['tool']} ({active['category']})"
+        )
+        return False, {
+            "success": False,
+            "error": f"{active_label} in progress ({active['tool']}). "
+                     f"Wait for it to complete before {tool_name}.",
+            "retry_after_ms": 3000,
+            "coordinated_by": "sidecar",
+        }
+
+
+def release_exclusive(reason="completed"):
+    """Release the exclusive lock."""
+    global _exclusive_op
+    with _exclusive_lock:
+        if _exclusive_op is not None:
+            logger.info(
+                f"  Released exclusive lock: {_exclusive_op['tool']} ({reason}, "
+                f"held {time.time() - _exclusive_op['started']:.1f}s)"
+            )
+            _exclusive_op = None
+
+
+def check_release_on_response(tool_name, args, response_bytes):
+    """Inspect a Unity response and release the exclusive lock if the operation completed."""
+    global _exclusive_op
+
+    with _exclusive_lock:
+        if _exclusive_op is None:
+            return
+
+        spec = EXCLUSIVE_TOOLS.get(tool_name)
+
+        # For async tools (compile_and_watch): extract job_id on start, release on completion
+        if tool_name == "compile_and_watch":
+            action = args.get("action", "start")
+
+            if action == "start" and _exclusive_op["job_id"] is None:
+                # Extract job_id from response
+                try:
+                    resp = json.loads(response_bytes)
+                    content = resp.get("result", {}).get("content", [])
+                    for item in content:
+                        if item.get("type") == "text":
+                            data = json.loads(item["text"])
+                            job_id = data.get("job_id")
+                            if job_id:
+                                _exclusive_op["job_id"] = job_id
+                                logger.info(f"  Stored job_id={job_id} for exclusive compile op")
+                except Exception:
+                    pass
+                return  # Don't release — compilation is ongoing
+
+            if action == "get_job":
+                # Check if job completed
+                try:
+                    resp = json.loads(response_bytes)
+                    content = resp.get("result", {}).get("content", [])
+                    for item in content:
+                        if item.get("type") == "text":
+                            data = json.loads(item["text"])
+                            status = data.get("status", "")
+                            if status in ("succeeded", "failed"):
+                                _exclusive_op = None
+                                logger.info(f"  Released exclusive lock: compile job {status}")
+                except Exception:
+                    pass
+                return
+
+        # For synchronous exclusive tools: release as soon as we get a response
+        if spec and not spec.get("async", False):
+            _exclusive_op = None
+            logger.info(f"  Released exclusive lock: {tool_name} (sync response received)")
+
 
 # ─── Window Focus Management (Windows only) ────────────────────────────────
 
@@ -340,18 +524,27 @@ class SidecarHandler(BaseHTTPRequestHandler):
         logger.debug(f"HTTP: {format % args}")
 
     def do_GET(self):
-        """Health/status endpoint."""
+        """Health/status endpoint. Returns cached state (background thread updates it)."""
         if self.path == "/status":
-            check_unity_health()
             instances = [
                 {"port": port, "connected": info["connected"], "label": info["label"]}
                 for port, info in sorted(unity_instances.items())
             ]
+            exclusive_info = None
+            with _exclusive_lock:
+                if _exclusive_op is not None:
+                    exclusive_info = {
+                        "category": _exclusive_op["category"],
+                        "tool": _exclusive_op["tool"],
+                        "job_id": _exclusive_op.get("job_id"),
+                        "elapsed_seconds": round(time.time() - _exclusive_op["started"], 1),
+                    }
             status = {
                 "sidecar": "running",
                 "unity_connected": unity_connected,
                 "unity_port": unity_port,
                 "auto_focus": _auto_focus_enabled,
+                "exclusive_op": exclusive_info,
                 "instances": instances,
             }
             body = json.dumps(status).encode()
@@ -366,8 +559,31 @@ class SidecarHandler(BaseHTTPRequestHandler):
         else:
             self.send_error(404)
 
+    def _send_json(self, data_bytes, label=""):
+        """Send a JSON response, swallowing broken-pipe errors."""
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
+            self.send_header("Content-Length", str(len(data_bytes)))
+            self.end_headers()
+            self.wfile.write(data_bytes)
+            if label:
+                logger.info(f"← {label}")
+        except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
+            pass
+
+    def _make_jsonrpc_result(self, result_dict, request_id):
+        """Wrap a dict as a JSON-RPC 2.0 success response with MCP content."""
+        return json.dumps({
+            "jsonrpc": "2.0",
+            "result": {
+                "content": [{"type": "text", "text": json.dumps(result_dict, indent=2)}]
+            },
+            "id": request_id,
+        }).encode()
+
     def do_POST(self):
-        """Forward JSON-RPC requests to Unity, intercepting focus actions."""
+        """Forward JSON-RPC requests to Unity, with focus interception and exclusive op coordination."""
         content_length = int(self.headers.get("Content-Length", 0))
         body_bytes = self.rfile.read(content_length)
 
@@ -385,46 +601,57 @@ class SidecarHandler(BaseHTTPRequestHandler):
         except Exception:
             pass
 
-        # Check if this is a focus action we handle in the sidecar
+        # ── Sidecar-handled: focus actions ──
         if parsed:
-            is_focus, action, args = is_focus_action(parsed)
+            is_focus, action, focus_args = is_focus_action(parsed)
             if is_focus:
                 logger.info(f"  [{request_id}] Handling focus action '{action}' in sidecar")
-                result = handle_focus_action(action, args)
+                result = handle_focus_action(action, focus_args)
                 if result is not None:
-                    response = json.dumps({
-                        "jsonrpc": "2.0",
-                        "result": {
-                            "content": [{"type": "text", "text": json.dumps(result, indent=2)}]
-                        },
-                        "id": request_id
-                    }).encode()
-                    try:
-                        self.send_response(200)
-                        self.send_header("Content-Type", "application/json")
-                        self.send_header("Content-Length", str(len(response)))
-                        self.end_headers()
-                        self.wfile.write(response)
-                        logger.info(f"← [{request_id}] {len(response)} bytes (sidecar-handled)")
-                    except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-                        pass
+                    response = self._make_jsonrpc_result(result, request_id)
+                    self._send_json(response, f"[{request_id}] {len(response)} bytes (sidecar-handled)")
                     return
 
+        # ── Exclusive operation coordination ──
+        tool_name_str = ""
+        tool_args = {}
+        is_exclusive = False
+        exclusive_category = None
+
+        if parsed and parsed.get("method") == "tools/call":
+            params = parsed.get("params", {})
+            tool_name_str = params.get("name", "")
+            tool_args = params.get("arguments", {})
+            exclusive_category = classify_tool(tool_name_str, tool_args)
+
+            if exclusive_category:
+                is_exclusive = True
+                allowed, override = try_acquire_exclusive(
+                    tool_name_str, exclusive_category, tool_args, request_id
+                )
+                if not allowed:
+                    response = self._make_jsonrpc_result(override, request_id)
+                    self._send_json(response, f"[{request_id}] {len(response)} bytes (coordinated)")
+                    return
+
+        # ── Forward to Unity ──
         try:
             response_bytes = forward_with_retry(body_bytes, request_id)
 
-            try:
-                self.send_response(200)
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(response_bytes)))
-                self.end_headers()
-                self.wfile.write(response_bytes)
-                logger.info(f"← [{request_id}] {len(response_bytes)} bytes")
-            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-                pass
+            # Check if this response should release an exclusive lock
+            if tool_name_str:
+                check_release_on_response(tool_name_str, tool_args, response_bytes)
+            # Also check get_job polling (compile_and_watch with action=get_job is not exclusive itself)
+            if tool_name_str == "compile_and_watch" and tool_args.get("action") == "get_job":
+                check_release_on_response(tool_name_str, tool_args, response_bytes)
+
+            self._send_json(response_bytes, f"[{request_id}] {len(response_bytes)} bytes")
 
         except Exception as e:
-            # Unity is down — return a proper JSON-RPC error
+            # Unity is down — release exclusive lock if we were the ones holding it
+            if is_exclusive:
+                release_exclusive(reason=f"Unity unreachable: {e}")
+
             logger.warning(f"✗ [{request_id}] Unity unreachable: {e}")
             error_response = json.dumps({
                 "jsonrpc": "2.0",
@@ -434,15 +661,7 @@ class SidecarHandler(BaseHTTPRequestHandler):
                 },
                 "id": request_id
             }).encode()
-
-            try:
-                self.send_response(200)  # JSON-RPC errors are still HTTP 200
-                self.send_header("Content-Type", "application/json")
-                self.send_header("Content-Length", str(len(error_response)))
-                self.end_headers()
-                self.wfile.write(error_response)
-            except (ConnectionAbortedError, ConnectionResetError, BrokenPipeError):
-                pass
+            self._send_json(error_response)
 
 
 # ─── Health check background thread ─────────────────────────────────────────
@@ -508,8 +727,14 @@ def main():
         logger.error(f"Port {args.port} is already in use. Another sidecar may be running.")
         sys.exit(1)
 
-    # Start HTTP server
-    server = HTTPServer(("127.0.0.1", args.port), SidecarHandler)
+    # Start HTTP server (threaded so health checks don't block request handling)
+    class ThreadedHTTPServer(HTTPServer):
+        from socketserver import ThreadingMixIn
+        # Inline mixin to avoid import at module level
+    ThreadedHTTPServer = type("ThreadedHTTPServer",
+                              (__import__("socketserver").ThreadingMixIn, HTTPServer),
+                              {"daemon_threads": True})
+    server = ThreadedHTTPServer(("127.0.0.1", args.port), SidecarHandler)
     logger.info(f"Sidecar listening on http://127.0.0.1:{args.port}")
     logger.info(f"Forwarding to Unity on http://127.0.0.1:{unity_port}")
 
