@@ -201,10 +201,10 @@ Example response when `save_to_file` is used:
 | 15 | scene_screenshot async with no completion | MEDIUM | Small | FIXED (652b4b4) |
 | 16 | No batch delete for GameObjects | MEDIUM | Small | FIXED (652b4b4) |
 | 17 | No "delete all except" operation | LOW | Small | FIXED (652b4b4) |
-| 18 | console_read persistence across reload | LOW | Trivial | Open |
+| 18 | console_read persistence across reload | LOW | Trivial | VERIFIED — Play mode logs survive exit reload. Pre-play logs lost if "Clear on Play" is enabled (Unity default). |
 | 19 | scene_get_hierarchy too large for deep models | HIGH | Medium | PARTIAL (e5622a1) — compact mode |
 | 19a | Large responses: auto-save to file | MEDIUM | Medium | FIXED — centralized in MCPProxy.cs |
-| 20 | manage_material can't inspect scene renderers | MEDIUM | Small | Open |
+| 20 | manage_material can't inspect scene renderers | MEDIUM | Small | FIXED — added get_renderer_info action |
 | 21 | console_read truncates multi-line messages | MEDIUM | Small | FIXED (e5622a1) |
 
 ### Priority Clusters

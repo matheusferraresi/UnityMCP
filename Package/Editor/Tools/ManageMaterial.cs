@@ -44,7 +44,7 @@ namespace UnixxtyMCP.Editor.Tools
         /// <returns>Result object indicating success or failure with appropriate data.</returns>
         [MCPTool("manage_material", "Manage materials: create, modify properties, assign to renderers", Category = "Asset", DestructiveHint = true)]
         public static object Execute(
-            [MCPParam("action", "Action: create, get_info, set_property, set_color, assign_to_renderer, set_renderer_color", required: true, Enum = new[] { "create", "get_info", "set_property", "set_color", "assign_to_renderer", "set_renderer_color" })] string action,
+            [MCPParam("action", "Action: create, get_info, get_renderer_info, set_property, set_color, assign_to_renderer, set_renderer_color", required: true, Enum = new[] { "create", "get_info", "get_renderer_info", "set_property", "set_color", "assign_to_renderer", "set_renderer_color" })] string action,
             [MCPParam("material_path", "Path to material asset (e.g., Assets/Materials/MyMat.mat)")] string materialPath = null,
             [MCPParam("shader", "Shader name for create (e.g., Standard, URP/Lit, Universal Render Pipeline/Lit)")] string shader = null,
             [MCPParam("property", "Property name (e.g., _Color, _BaseColor, _MainTex)")] string property = null,
@@ -67,11 +67,12 @@ namespace UnixxtyMCP.Editor.Tools
                 {
                     "create" => HandleCreate(materialPath, shader),
                     "get_info" => HandleGetInfo(materialPath),
+                    "get_renderer_info" => HandleGetRendererInfo(target, slot),
                     "set_property" => HandleSetProperty(materialPath, property, value),
                     "set_color" => HandleSetColor(materialPath, property, color),
                     "assign_to_renderer" => HandleAssignToRenderer(materialPath, target, slot),
                     "set_renderer_color" => HandleSetRendererColor(target, property, color, slot, mode),
-                    _ => throw MCPException.InvalidParams($"Unknown action: '{action}'. Valid actions: create, get_info, set_property, set_color, assign_to_renderer, set_renderer_color")
+                    _ => throw MCPException.InvalidParams($"Unknown action: '{action}'. Valid actions: create, get_info, get_renderer_info, set_property, set_color, assign_to_renderer, set_renderer_color")
                 };
             }
             catch (MCPException)
@@ -189,6 +190,106 @@ namespace UnixxtyMCP.Editor.Tools
             {
                 success = true,
                 material = BuildDetailedMaterialInfo(normalizedPath, material)
+            };
+        }
+
+        /// <summary>
+        /// Inspects the Renderer on a scene GameObject, returning material info per slot.
+        /// </summary>
+        private static object HandleGetRendererInfo(string targetPath, int slot)
+        {
+            if (string.IsNullOrWhiteSpace(targetPath))
+                throw MCPException.InvalidParams("The 'target' parameter is required for get_renderer_info action.");
+
+            GameObject gameObject = FindGameObject(targetPath);
+            if (gameObject == null)
+                return new { success = false, error = $"GameObject not found: '{targetPath}'." };
+
+            Renderer renderer = gameObject.GetComponent<Renderer>();
+            if (renderer == null)
+                return new { success = false, error = $"No Renderer component found on '{targetPath}'." };
+
+            Material[] materials = renderer.sharedMaterials;
+            if (materials == null || materials.Length == 0)
+                return new { success = false, error = $"Renderer on '{targetPath}' has no materials." };
+
+            // If a specific slot is requested and valid, return just that slot
+            if (slot > 0)
+            {
+                if (slot >= materials.Length)
+                    return new { success = false, error = $"Slot {slot} out of range. Renderer has {materials.Length} material(s) (0-{materials.Length - 1})." };
+
+                return new
+                {
+                    success = true,
+                    target = targetPath,
+                    rendererType = renderer.GetType().Name,
+                    slot,
+                    material = BuildRendererMaterialInfo(materials[slot], slot)
+                };
+            }
+
+            // Return all slots
+            var materialInfos = new List<object>();
+            for (int i = 0; i < materials.Length; i++)
+                materialInfos.Add(BuildRendererMaterialInfo(materials[i], i));
+
+            return new
+            {
+                success = true,
+                target = targetPath,
+                rendererType = renderer.GetType().Name,
+                materialCount = materials.Length,
+                materials = materialInfos
+            };
+        }
+
+        private static object BuildRendererMaterialInfo(Material material, int slotIndex)
+        {
+            if (material == null)
+                return new { slot = slotIndex, name = "(none)", shader = "(none)" };
+
+            // Get asset path if it's a saved asset (empty for runtime instances)
+            string assetPath = AssetDatabase.GetAssetPath(material);
+
+            // Collect key properties (colors, main texture)
+            var keyProperties = new Dictionary<string, object>();
+            Shader shader = material.shader;
+            int propCount = shader.GetPropertyCount();
+            for (int i = 0; i < propCount && keyProperties.Count < 15; i++)
+            {
+                string propName = shader.GetPropertyName(i);
+                ShaderPropertyType propType = shader.GetPropertyType(i);
+                try
+                {
+                    switch (propType)
+                    {
+                        case ShaderPropertyType.Color:
+                            keyProperties[propName] = FormatColor(material.GetColor(propName));
+                            break;
+                        case ShaderPropertyType.Texture:
+                            var tex = material.GetTexture(propName);
+                            if (tex != null)
+                                keyProperties[propName] = tex.name;
+                            break;
+                        case ShaderPropertyType.Float:
+                        case ShaderPropertyType.Range:
+                            keyProperties[propName] = material.GetFloat(propName);
+                            break;
+                    }
+                }
+                catch { }
+            }
+
+            return new
+            {
+                slot = slotIndex,
+                name = material.name,
+                shader = shader.name,
+                assetPath = string.IsNullOrEmpty(assetPath) ? null : assetPath,
+                renderQueue = material.renderQueue,
+                keywords = material.shaderKeywords.Length > 0 ? material.shaderKeywords : null,
+                properties = keyProperties.Count > 0 ? (object)keyProperties : null
             };
         }
 
