@@ -190,6 +190,47 @@ Example response when `save_to_file` is used:
 
 ---
 
+## Issue 22: compile_and_watch Auto-Refresh on CS2001 Errors (HIGH)
+
+**Problem**: When script files are deleted externally, `compile_and_watch` reports CS2001 errors ("source file could not be found") because Unity's csproj still references the deleted files. The agent has to manually call `unity_refresh(force)` first, then re-trigger compilation — a clunky 3-step workflow.
+
+**Impact**: HIGH — the ideal flow `delete files → compile_and_watch(start) → poll get_job → done` is broken. Agents waste time debugging stale file references.
+
+**Fix Applied**: In `OnCompilationFinished`, if ALL errors are CS2001 and the job hasn't retried yet:
+1. Set `hasRetried = true` on the job (prevents infinite loops)
+2. Reset job to `Compiling` status, clear errors
+3. Call `AssetDatabase.Refresh()` via `delayCall` to update csproj
+4. Re-request compilation via `CompilationPipeline.RequestScriptCompilation()`
+5. If retry also fails, report errors normally (real errors, not stale refs)
+
+Added `hasRetried` field to `CompileJob` and contextual hints in `get_job` responses.
+
+---
+
+## Issue 23: unity_refresh wait_for_ready Hint on Unity 6+ (MEDIUM)
+
+**Problem**: `unity_refresh(compile=request, wait_for_ready=true)` silently skips waiting on Unity 6+ due to domain reload issues, returning a vague hint that doesn't tell the agent what to do instead.
+
+**Impact**: MEDIUM — agents call `unity_refresh` expecting it to block until compilation finishes, then proceed with stale state.
+
+**Fix Applied**: Improved the Unity 6+ hint to explicitly recommend `compile_and_watch` as the alternative:
+> "Use compile_and_watch to track compilation: call compile_and_watch(action='start'), then poll compile_and_watch(action='get_job', job_id='...') every 2-3 seconds."
+
+---
+
+## Issue 24: compile_and_watch get_job Domain Reload Hint (LOW)
+
+**Problem**: When `get_job` is polled during a domain reload, MCPProxy returns a domain-reload error. The existing error message says "wait 2-3 seconds and retry" which is correct, but the `get_job` response itself has no hint about this possibility when the job is still compiling.
+
+**Impact**: LOW — agents already handle the error, but a proactive hint makes the polling loop more predictable.
+
+**Fix Applied**: Added `hint` field to `get_job` response:
+- When `compiling`: "Still compiling. If you get a domain reload error, wait 2-3 seconds and retry."
+- When `succeeded` after retry: "Succeeded after auto-retry (stale csproj references were refreshed)."
+- When `failed` after retry: "Failed after auto-retry. These are real compilation errors (not stale file references)."
+
+---
+
 ## Summary
 
 | # | Issue | Priority | Effort | Status |
@@ -206,6 +247,9 @@ Example response when `save_to_file` is used:
 | 19a | Large responses: auto-save to file | MEDIUM | Medium | FIXED — centralized in MCPProxy.cs |
 | 20 | manage_material can't inspect scene renderers | MEDIUM | Small | FIXED — added get_renderer_info action |
 | 21 | console_read truncates multi-line messages | MEDIUM | Small | FIXED (e5622a1) |
+| 22 | compile_and_watch CS2001 auto-refresh+retry | HIGH | Small | FIXED |
+| 23 | unity_refresh wait_for_ready hint improvement | MEDIUM | Trivial | FIXED |
+| 24 | compile_and_watch get_job domain reload hint | LOW | Trivial | FIXED |
 
 ### Priority Clusters
 

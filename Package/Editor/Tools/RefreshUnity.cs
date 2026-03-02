@@ -109,7 +109,9 @@ namespace UnixxtyMCP.Editor.Tools
                 if (compileRequested && waitForReady)
                 {
                     shouldWait = false;
-                    hint = "wait_for_ready skipped on Unity 6+ when compile is requested (domain reload issues). Poll unity_refresh with wait_for_ready=false to check state.";
+                    hint = "wait_for_ready skipped on Unity 6+ (domain reload kills the wait loop). " +
+                           "Use compile_and_watch to track compilation: call compile_and_watch(action='start'), " +
+                           "then poll compile_and_watch(action='get_job', job_id='...') every 2-3 seconds.";
                 }
 #endif
 

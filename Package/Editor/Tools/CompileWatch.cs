@@ -112,6 +112,14 @@ namespace UnixxtyMCP.Editor.Tools
                 };
             }
 
+            string hint = null;
+            if (job.status == CompileJobStatus.Compiling)
+                hint = "Still compiling. If you get a domain reload error, wait 2-3 seconds and retry.";
+            else if (job.hasRetried && job.status == CompileJobStatus.Succeeded)
+                hint = "Succeeded after auto-retry (stale csproj references were refreshed).";
+            else if (job.hasRetried && job.status == CompileJobStatus.Failed)
+                hint = "Failed after auto-retry. These are real compilation errors (not stale file references).";
+
             return new
             {
                 success = true,
@@ -130,7 +138,8 @@ namespace UnixxtyMCP.Editor.Tools
                     severity = e.severity
                 }).ToList() : null,
                 warning_count = job.warningCount,
-                assembly_count = job.assemblyCount
+                assembly_count = job.assemblyCount,
+                hint
             };
         }
     }
@@ -165,6 +174,7 @@ namespace UnixxtyMCP.Editor.Tools
         public List<CompileError> errors = new List<CompileError>();
         public int warningCount;
         public int assemblyCount;
+        public bool hasRetried;
     }
 
     [Serializable]
@@ -315,6 +325,38 @@ namespace UnixxtyMCP.Editor.Tools
             _currentJob.status = _currentJob.errors.Count > 0
                 ? CompileJobStatus.Failed
                 : CompileJobStatus.Succeeded;
+
+            // CS2001 auto-retry: if ALL errors are "source file could not be found",
+            // the csproj references deleted files. Refresh AssetDatabase to update
+            // the csproj, then re-request compilation. Only retry once to avoid loops.
+            if (_currentJob.status == CompileJobStatus.Failed && !_currentJob.hasRetried)
+            {
+                bool allCS2001 = _currentJob.errors.Count > 0
+                    && _currentJob.errors.All(e => e.code == "CS2001");
+                if (allCS2001)
+                {
+                    _currentJob.hasRetried = true;
+                    _currentJob.status = CompileJobStatus.Compiling;
+                    _currentJob.finishedUnixMs = 0;
+                    _currentJob.errors.Clear();
+                    _currentJob.warningCount = 0;
+                    _currentJob.assemblyCount = 0;
+                    SaveToSessionState();
+
+                    Debug.Log("[CompileWatch] All errors are CS2001 (deleted files). Refreshing AssetDatabase and retrying compilation...");
+
+                    EditorApplication.delayCall += () =>
+                    {
+                        AssetDatabase.Refresh();
+                        EditorApplication.delayCall += () =>
+                        {
+                            if (!EditorApplication.isCompiling)
+                                CompilationPipeline.RequestScriptCompilation();
+                        };
+                    };
+                    return; // Don't null out _currentJob — it's still active
+                }
+            }
 
             // After successful compilation, refresh AssetDatabase so new [MenuItem],
             // [InitializeOnLoad], and other attributes are registered immediately.
