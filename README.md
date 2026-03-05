@@ -173,7 +173,7 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **manage_ugui** - Create and modify Canvas, Button, Text (TMP), Image, Panel, ScrollView, InputField, Slider, Toggle, Dropdown
 
 ### UI Toolkit
-- **manage_uitoolkit** - Create PanelSettings/UIDocuments, query runtime panels, preview hidden UI, validate USS, scaffold screens
+- **manage_uitoolkit** - Create PanelSettings/UIDocuments, query runtime panels, preview hidden UI, validate USS (with theme chain resolution), scaffold screens
 - **uitoolkit_query** - Query VisualElements in EditorWindows with compact overview and drill-down refs
 - **uitoolkit_get_styles** - Get computed USS styles for a VisualElement
 - **uitoolkit_click** - Click a button, toggle, or clickable element in an EditorWindow
@@ -189,7 +189,7 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **editor_eval** - Compile and execute arbitrary C# code in the Unity Editor via Roslyn
 
 ### Hot Patching (Harmony 2.3.3)
-- **hot_patch** - Patch method bodies during Play Mode using Harmony — edit code and see results instantly without domain reload
+- **hot_patch** - Patch method bodies during Play Mode using Harmony — edit code and see results instantly without domain reload. Use `__instance` to access instance members, `__result` to override return values
 
 ### Vision & AI
 - **vision_capture** - Capture Game View or Scene View as base64 PNG for multimodal AI vision
@@ -220,7 +220,7 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **undo_redo** - Control Unity's undo/redo system: undo, redo, get history, collapse groups
 
 ### Console & Profiling
-- **console_read** - Read Unity Console log entries with filtering and pagination
+- **console_read** - Read Unity Console log entries with filtering, pagination, and `since_index` for incremental reads
 - **console_write** - Write messages to Unity Console or clear it
 - **profiler_start** - Start profiler recording, returns job_id for polling
 - **profiler_stop** - Stop profiler recording and finalize job
