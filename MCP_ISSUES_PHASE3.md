@@ -139,11 +139,11 @@ Generates:
 
 | Issue | Severity | Category | Status |
 |-------|----------|----------|--------|
-| #26 | HIGH | New tool: `manage_uitoolkit` | Open |
-| #27 | HIGH | Runtime panel inspection | Open |
-| #28 | MEDIUM | Hidden panel preview | Open |
-| #29 | MEDIUM | USS validation | Open |
-| #30 | LOW | Scaffold templates | Open |
+| #26 | HIGH | New tool: `manage_uitoolkit` | **Done** |
+| #27 | HIGH | Runtime panel inspection | **Done** |
+| #28 | MEDIUM | Hidden panel preview | **Done** |
+| #29 | MEDIUM | USS validation | **Done** |
+| #30 | LOW | Scaffold templates | **Done** |
 | #31 | LOW | MenuItem registration (re-confirm #12) | Known |
 
 ### What Worked Well
