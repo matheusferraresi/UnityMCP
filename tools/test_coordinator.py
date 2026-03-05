@@ -147,8 +147,8 @@ def test_readonly_during_lock():
 
 def test_poll_releases_lock(job_id):
     """Polling get_job with a completed job should release the lock."""
-    # Wait a moment for compilation to finish
-    for i in range(15):
+    # Wait for compilation to finish (Unity can take 30s+ on full recompile)
+    for i in range(45):
         resp = rpc("compile_and_watch", {"action": "get_job", "job_id": job_id}, f"poll-{i}")
         data = get_content(resp)
         job_status = data.get("status", "")
@@ -156,7 +156,7 @@ def test_poll_releases_lock(job_id):
             break
         time.sleep(1)
     else:
-        return failed("poll_releases_lock", f"Compilation didn't finish in 15s, last status: {job_status}")
+        return failed("poll_releases_lock", f"Compilation didn't finish in 45s, last status: {job_status}")
 
     # Lock should now be released
     s = status()
