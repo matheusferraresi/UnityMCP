@@ -273,7 +273,7 @@ Added `hasRetried` field to `CompileJob` and contextual hints in `get_job` respo
 | 16 | No batch delete for GameObjects | MEDIUM | Small | FIXED (652b4b4) |
 | 17 | No "delete all except" operation | LOW | Small | FIXED (652b4b4) |
 | 18 | console_read persistence across reload | LOW | Trivial | VERIFIED — Play mode logs survive exit reload. Pre-play logs lost if "Clear on Play" is enabled (Unity default). |
-| 19 | scene_get_hierarchy too large for deep models | HIGH | Medium | PARTIAL (e5622a1) — compact mode |
+| 19 | scene_get_hierarchy too large for deep models | HIGH | Medium | **FIXED** (compact mode + pagination + auto-save + improved docs) |
 | 19a | Large responses: auto-save to file | MEDIUM | Medium | FIXED — centralized in MCPProxy.cs |
 | 20 | manage_material can't inspect scene renderers | MEDIUM | Small | FIXED — added get_renderer_info action |
 | 21 | console_read truncates multi-line messages | MEDIUM | Small | FIXED (e5622a1) |

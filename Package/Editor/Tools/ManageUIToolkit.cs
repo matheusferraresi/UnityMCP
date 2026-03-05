@@ -88,7 +88,7 @@ namespace UnixxtyMCP.Editor.Tools
                     "set_element_style" => SetElementStyle(target, selector, refId, property, value),
                     "preview_panel" => PreviewPanel(target, show),
                     "assign_theme" => AssignTheme(panelSettingsPath ?? path, themePath),
-                    "inspect_uss" => InspectUSS(path),
+                    "inspect_uss" => InspectUSS(path, panelSettingsPath),
                     "scaffold_screen" => ScaffoldScreen(name, path, ns, baseClass, themePath, elements),
                     _ => throw MCPException.InvalidParams($"Unknown action: '{action}'")
                 };
@@ -763,7 +763,7 @@ namespace UnixxtyMCP.Editor.Tools
 
         #region inspect_uss (Issue #29 — USS Validation)
 
-        private static object InspectUSS(string ussPath)
+        private static object InspectUSS(string ussPath, string panelSettingsPath = null)
         {
             if (string.IsNullOrEmpty(ussPath))
                 throw MCPException.InvalidParams("'path' is required (path to .uss file).");
@@ -789,46 +789,88 @@ namespace UnixxtyMCP.Editor.Tools
             // Find @import references and trace them
             var imports = new List<string>();
             var importedDefs = new HashSet<string>();
-            foreach (Match m in Regex.Matches(ussContent, @"@import\s+url\([""']([^""']+)[""']\)"))
+            CollectImportedDefinitions(fullPath, ussContent, imports, importedDefs);
+
+            // Resolve theme chain if panel_settings_path is provided (Issue #32)
+            var themeDefs = new HashSet<string>();
+            string themeSource = null;
+            if (!string.IsNullOrEmpty(panelSettingsPath))
+            {
+                panelSettingsPath = PathUtilities.NormalizePath(panelSettingsPath);
+                var panel = AssetDatabase.LoadAssetAtPath<PanelSettings>(panelSettingsPath);
+                if (panel != null && panel.themeStyleSheet != null)
+                {
+                    themeSource = AssetDatabase.GetAssetPath(panel.themeStyleSheet);
+                    if (!string.IsNullOrEmpty(themeSource))
+                    {
+                        // TSS files are USS-compatible — parse their @import chain
+                        string tssFullPath = Path.Combine(Application.dataPath, "..", themeSource).Replace('\\', '/');
+                        if (File.Exists(tssFullPath))
+                        {
+                            string tssContent = File.ReadAllText(tssFullPath);
+                            // Collect definitions from TSS file itself
+                            foreach (Match def in Regex.Matches(tssContent, @"(--[\w-]+)\s*:"))
+                                themeDefs.Add(def.Groups[1].Value);
+                            // Collect definitions from TSS imports
+                            var tssImports = new List<string>();
+                            CollectImportedDefinitions(tssFullPath, tssContent, tssImports, themeDefs);
+                        }
+                    }
+                }
+            }
+
+            var allDefs = new HashSet<string>(localDefs);
+            allDefs.UnionWith(importedDefs);
+            allDefs.UnionWith(themeDefs);
+
+            var resolved = varRefs.Where(v => allDefs.Contains(v)).OrderBy(v => v).ToList();
+            var unresolved = varRefs.Where(v => !allDefs.Contains(v)).OrderBy(v => v).ToList();
+
+            var result = new Dictionary<string, object>
+            {
+                { "success", true },
+                { "path", ussPath },
+                { "varReferences", varRefs.Count },
+                { "localDefinitions", localDefs.OrderBy(d => d).ToList() },
+                { "imports", imports },
+                { "importedDefinitions", importedDefs.OrderBy(d => d).ToList() },
+                { "resolved", resolved },
+                { "unresolved", unresolved },
+                { "hasErrors", unresolved.Count > 0 }
+            };
+
+            if (themeDefs.Count > 0)
+            {
+                result["themeSource"] = themeSource;
+                result["themeDefinitions"] = themeDefs.OrderBy(d => d).ToList();
+            }
+
+            result["message"] = unresolved.Count > 0
+                ? $"{unresolved.Count} unresolved var() reference(s). Check spelling or import chain: {string.Join(", ", unresolved)}"
+                    + (string.IsNullOrEmpty(panelSettingsPath) ? " Hint: pass panel_settings_path to resolve variables from the theme chain." : "")
+                : $"All {resolved.Count} var() references resolved successfully."
+                    + (themeDefs.Count > 0 ? $" ({themeDefs.Count} from theme chain)" : "");
+
+            return result;
+        }
+
+        private static void CollectImportedDefinitions(string parentFullPath, string content, List<string> imports, HashSet<string> defs)
+        {
+            foreach (Match m in Regex.Matches(content, @"@import\s+url\([""']([^""']+)[""']\)"))
             {
                 string importRef = m.Groups[1].Value;
                 imports.Add(importRef);
 
-                // Resolve relative to the USS file's directory
-                string ussDir = Path.GetDirectoryName(fullPath);
-                string importFullPath = Path.Combine(ussDir, importRef).Replace('\\', '/');
+                string parentDir = Path.GetDirectoryName(parentFullPath);
+                string importFullPath = Path.Combine(parentDir, importRef).Replace('\\', '/');
 
                 if (File.Exists(importFullPath))
                 {
                     string importContent = File.ReadAllText(importFullPath);
                     foreach (Match def in Regex.Matches(importContent, @"(--[\w-]+)\s*:"))
-                        importedDefs.Add(def.Groups[1].Value);
+                        defs.Add(def.Groups[1].Value);
                 }
             }
-
-            // Also check .tss theme files imported via PanelSettings (scan for common paths)
-            // This is best-effort — the actual theme chain may be deeper
-            var allDefs = new HashSet<string>(localDefs);
-            allDefs.UnionWith(importedDefs);
-
-            var resolved = varRefs.Where(v => allDefs.Contains(v)).OrderBy(v => v).ToList();
-            var unresolved = varRefs.Where(v => !allDefs.Contains(v)).OrderBy(v => v).ToList();
-
-            return new
-            {
-                success = true,
-                path = ussPath,
-                varReferences = varRefs.Count,
-                localDefinitions = localDefs.OrderBy(d => d).ToList(),
-                imports,
-                importedDefinitions = importedDefs.OrderBy(d => d).ToList(),
-                resolved,
-                unresolved,
-                hasErrors = unresolved.Count > 0,
-                message = unresolved.Count > 0
-                    ? $"{unresolved.Count} unresolved var() reference(s). Check spelling or import chain: {string.Join(", ", unresolved)}"
-                    : $"All {resolved.Count} var() references resolved successfully."
-            };
         }
 
         #endregion

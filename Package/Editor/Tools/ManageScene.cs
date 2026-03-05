@@ -404,7 +404,11 @@ namespace UnixxtyMCP.Editor.Tools
         /// <summary>
         /// Gets the hierarchy of GameObjects in the current scene.
         /// </summary>
-        [MCPTool("scene_get_hierarchy", "Gets the hierarchy of GameObjects in the current scene", Category = "Scene", ReadOnlyHint = true)]
+        [MCPTool("scene_get_hierarchy",
+            "Gets the hierarchy of GameObjects in the current scene. " +
+            "For deep/complex hierarchies (imported 3D models), use compact=true and lower max_depth to avoid oversized responses. " +
+            "Use parent parameter to drill into specific subtrees.",
+            Category = "Scene", ReadOnlyHint = true)]
         public static object GetHierarchy(
             [MCPParam("parent", "Instance ID or name of parent GameObject to list children of (null for roots)")] string parent = null,
             [MCPParam("max_depth", "Maximum depth to traverse (default: 1, just immediate children)", Minimum = 1)] int maxDepth = 1,
@@ -534,6 +538,8 @@ namespace UnixxtyMCP.Editor.Tools
         [MCPTool("scene_screenshot",
             "Captures a screenshot of the Game View and saves to Assets/Screenshots/. " +
             "Returns synchronously with file path and size. " +
+            "Note: Canvas/uGUI elements (ScreenSpaceOverlay) are only visible during Play Mode. " +
+            "UI Toolkit panels may also require Play Mode to render. " +
             "For inline base64 (direct AI vision analysis) or Scene View capture, use vision_capture instead.",
             Category = "Scene", DestructiveHint = true)]
         public static object CaptureScreenshot(

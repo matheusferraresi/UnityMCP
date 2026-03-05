@@ -134,13 +134,14 @@ namespace UnixxtyMCP.Editor.Tools
         /// <summary>
         /// Reads Unity Console log entries with filtering and pagination support.
         /// </summary>
-        [MCPTool("console_read", "Reads Unity Console log entries with filtering and pagination", Category = "Console", DestructiveHint = true)]
+        [MCPTool("console_read", "Reads Unity Console log entries with filtering and pagination. Use since_index to get only entries after a known index (e.g. to see new errors since play mode start).", Category = "Console", DestructiveHint = true)]
         public static object Read(
             [MCPParam("action", "Action to perform: 'get' to read entries, 'clear' to clear console (default: get)", Enum = new[] { "get", "clear" })] string action = "get",
             [MCPParam("types", "Comma-separated log types to include: error, warning, log, all (default: error,warning)")] string types = "error,warning",
             [MCPParam("count", "Maximum entries to return (non-paging mode, overrides page_size if set)")] int? count = null,
             [MCPParam("page_size", "Entries per page (default: 50, max: 500)", Minimum = 1, Maximum = 500)] int pageSize = DefaultPageSize,
             [MCPParam("cursor", "Starting index for pagination (default: 0)", Minimum = 0)] int cursor = 0,
+            [MCPParam("since_index", "Only return entries with raw console index > this value. Use totalConsoleCount from a previous call to get only new entries.", Minimum = 0)] int? sinceIndex = null,
             [MCPParam("filter_text", "Text filter for messages (case-insensitive substring match)")] string filterText = null,
             [MCPParam("format", "Output format: 'plain' or 'detailed' (default: plain)", Enum = new[] { "plain", "detailed" })] string format = "plain",
             [MCPParam("include_stacktrace", "Include stack traces in output (default: false)")] bool includeStacktrace = false,
@@ -161,7 +162,7 @@ namespace UnixxtyMCP.Editor.Tools
 
             return normalizedAction switch
             {
-                "get" => GetEntries(types, count, pageSize, cursor, filterText, format, includeStacktrace, deduplicate, maxMessageLength),
+                "get" => GetEntries(types, count, pageSize, cursor, sinceIndex, filterText, format, includeStacktrace, deduplicate, maxMessageLength),
                 "clear" => ClearConsole(),
                 _ => throw MCPException.InvalidParams($"Unknown action: '{action}'. Valid actions: get, clear")
             };
@@ -174,7 +175,7 @@ namespace UnixxtyMCP.Editor.Tools
         /// <summary>
         /// Gets console log entries with filtering, pagination, deduplication, and message truncation.
         /// </summary>
-        private static object GetEntries(string types, int? count, int pageSize, int cursor, string filterText, string format, bool includeStacktrace, bool deduplicate, int maxMessageLength)
+        private static object GetEntries(string types, int? count, int pageSize, int cursor, int? sinceIndex, string filterText, string format, bool includeStacktrace, bool deduplicate, int maxMessageLength)
         {
             try
             {
@@ -188,6 +189,7 @@ namespace UnixxtyMCP.Editor.Tools
 
                 int resolvedCursor = Mathf.Max(0, cursor);
                 int resolvedMaxMessageLength = maxMessageLength <= 0 ? int.MaxValue : maxMessageLength;
+                int resolvedSinceIndex = sinceIndex.HasValue ? Mathf.Max(0, sinceIndex.Value) : -1;
 
                 bool isDetailedFormat = (format ?? "plain").Equals("detailed", StringComparison.OrdinalIgnoreCase);
 
@@ -212,7 +214,10 @@ namespace UnixxtyMCP.Editor.Tools
                     // Create a LogEntry instance to receive data
                     object logEntry = Activator.CreateInstance(logEntryType);
 
-                    for (int i = 0; i < totalConsoleCount; i++)
+                    // If since_index is set, start iteration from that index
+                    int startIndex = resolvedSinceIndex >= 0 ? Mathf.Min(resolvedSinceIndex + 1, totalConsoleCount) : 0;
+
+                    for (int i = startIndex; i < totalConsoleCount; i++)
                     {
                         // Get entry data
                         getEntryInternalMethod.Invoke(null, new object[] { i, logEntry });

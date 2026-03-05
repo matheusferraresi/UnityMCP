@@ -5,6 +5,19 @@ All notable changes to Unixxty MCP will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.1] - 2026-03-05
+
+### Fixed
+- `inspect_uss` now resolves variables through PanelSettings → ThemeStyleSheet → USS import chain via `panel_settings_path` parameter (Issue #32)
+- `hot_patch` documents `__instance` and `__result` parameters in tool description and error hints (Issue #10)
+- `hot_patch` compilation failure now lists available parameters and suggests reflection for private fields
+- `console_read` gains `since_index` parameter for filtering entries after a known index (Issue #5)
+- `scene_screenshot` tool description now notes Canvas/uGUI is only visible during Play Mode (Issue #6)
+- `scene_get_hierarchy` tool description now recommends compact mode for deep hierarchies (Issue #19)
+- Sidecar auto-retries when Unity returns domain reload errors in response body (Issue #1)
+- Sidecar detects "domain reload", "Request interrupted", "AppDomainUnloadedException" markers and retries up to 10 times
+- `hot_patch` error responses now include timeout recovery guidance (Issue #11)
+
 ## [2.1.0] - 2026-03-05
 
 ### Added

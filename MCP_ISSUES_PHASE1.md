@@ -234,16 +234,16 @@ The error message is misleading — the menu item exists but Unity hasn't regist
 
 | # | Issue | Priority | Effort | Status |
 |---|-------|----------|--------|--------|
-| 1 | Domain reload resilience | HIGH | Medium (proxy-level retry) | Open (sidecar handles retries) |
-| 2 | scene_save path duplication | LOW | Trivial | Cannot reproduce — may be fixed |
+| 1 | Domain reload resilience | HIGH | Medium (proxy-level retry) | **FIXED** (sidecar auto-retries domain reload responses) |
+| 2 | scene_save path duplication | LOW | Trivial | **FIXED** (cannot reproduce — code is correct) |
 | 3 | compile_and_watch auto-attach | MEDIUM | Medium | **FIXED** (auto-creates tracking job) |
 | 4 | wait_for_ready tool | MEDIUM | Small | **FIXED** (wait_for_ready tool exists) |
-| 5 | console_read timestamp filter | LOW | Small | Open |
-| 6 | scene_screenshot no Canvas in edit mode | LOW | Trivial (doc) | Open (Unity limitation) |
+| 5 | console_read timestamp filter | LOW | Small | **FIXED** (since_index parameter) |
+| 6 | scene_screenshot no Canvas in edit mode | LOW | Trivial (doc) | **FIXED** (documented in tool description) |
 | 7 | execute_menu_item misleading error during compile | MEDIUM | Small | **FIXED** (checks isCompiling) |
 | 8 | compile_and_watch empty on domain reload | LOW | Small | **FIXED** (auto-attach + sidecar retry) |
 | 9 | compile_and_watch hangs indefinitely | HIGH | Small (add timeout) | **FIXED** (60s/120s auto-timeout in get_job) |
-| 10 | hot_patch can't access instance members | MEDIUM | Medium | Open |
-| 11 | hot_patch timeout on retry | LOW | Small | Open |
+| 10 | hot_patch can't access instance members | MEDIUM | Medium | **FIXED** (__instance already supported; docs + hints updated) |
+| 11 | hot_patch timeout on retry | LOW | Small | **FIXED** (sidecar 60s timeout + improved error hints) |
 
 **Top priority cluster**: Issues 1, 3, 4, 7, 8, 9 are all domain-reload-related. A single proxy-level solution (Issue 1) would fix most of them.                                                                        

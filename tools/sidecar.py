@@ -494,12 +494,49 @@ def forward_to_unity(body_bytes, timeout=REQUEST_TIMEOUT):
         return resp.read()
 
 
+DOMAIN_RELOAD_MARKERS = [
+    "domain reload",
+    "Domain Reload",
+    "Request interrupted",
+    "AppDomainUnloadedException",
+    "request processing timed out",
+]
+DOMAIN_RELOAD_MAX_RETRIES = 10  # retry up to 10 times specifically for domain reload responses
+
+
+def _is_domain_reload_response(response_bytes):
+    """Check if a Unity response indicates a domain reload is in progress."""
+    try:
+        text = response_bytes.decode("utf-8", errors="replace")
+        return any(marker in text for marker in DOMAIN_RELOAD_MARKERS)
+    except Exception:
+        return False
+
+
 def forward_with_retry(body_bytes, request_id="?"):
     """Forward to Unity with retries during domain reloads / restarts."""
     last_error = None
+    domain_reload_retries = 0
     for attempt in range(MAX_RETRIES):
         try:
             result = forward_to_unity(body_bytes)
+
+            # Check if Unity returned a domain reload error in the response body
+            if _is_domain_reload_response(result):
+                domain_reload_retries += 1
+                if domain_reload_retries <= DOMAIN_RELOAD_MAX_RETRIES:
+                    logger.info(
+                        f"  [req {request_id}] Domain reload detected in response "
+                        f"(retry {domain_reload_retries}/{DOMAIN_RELOAD_MAX_RETRIES})"
+                    )
+                    time.sleep(RETRY_INTERVAL)
+                    continue
+                else:
+                    logger.warning(
+                        f"  [req {request_id}] Domain reload persists after "
+                        f"{DOMAIN_RELOAD_MAX_RETRIES} retries, returning response as-is"
+                    )
+
             if attempt > 0:
                 logger.info(f"  [req {request_id}] Unity responded after {attempt + 1} attempts")
             return result

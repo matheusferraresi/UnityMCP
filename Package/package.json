@@ -1,6 +1,6 @@
 {
   "name": "com.pudexxt.unixxtymcp",
-  "version": "2.1.0",
+  "version": "2.1.1",
   "displayName": "Unixxty MCP - AI Editor Integration",
   "description": "Pure C# MCP (Model Context Protocol) server running inside Unity Editor. 76 built-in tools + 28 resources for AI assistants to create GameObjects, edit scripts, run tests, build projects, hot-patch code in Play Mode, and more. Zero external dependencies - no Python, Node.js, or sidecar process needed.",
   "unity": "2022.3",

@@ -135,6 +135,24 @@ Generates:
 
 ---
 
+## Issue 32: `inspect_uss` Should Resolve Variables Through PanelSettings Theme Chain (LOW)
+
+**Problem**: `inspect_uss` validates `var()` references by tracing the file's own `@import` chain. But per-screen USS files (e.g., `MainMenu.uss`) intentionally DON'T import token files — the variables come from the **theme chain**: `PanelSettings → ThemeStyleSheet (.tss) → @import token USS files`.
+
+This means every per-screen USS file reports all `var()` references as "unresolved", even though they resolve correctly at runtime. This creates noise and false positives.
+
+**Observed**: `inspect_uss("Assets/_Project/UI/USS/MainMenu.uss")` reports 9 unresolved variables (`--color-bg-primary`, `--font-title`, etc.) — all correctly defined in token files imported by `AethernalsTheme.tss`.
+
+**Impact**: LOW — the tool still works for validating the theme file itself, and users learn to ignore the false positives. But it undermines trust in the validation.
+
+**Proposed Fix**: Add optional `panel_settings_path` parameter:
+```
+inspect_uss(path: "Assets/UI/USS/MainMenu.uss", panel_settings_path: "Assets/UI/PanelSettings/AethernalsPanel.asset")
+```
+When provided, the tool resolves the PanelSettings → ThemeStyleSheet → imported USS chain and includes those definitions in the resolution set. Without the parameter, behavior stays the same (file-local resolution only).
+
+---
+
 ## Summary
 
 | Issue | Severity | Category | Status |
@@ -145,6 +163,7 @@ Generates:
 | #29 | MEDIUM | USS validation | **Done** |
 | #30 | LOW | Scaffold templates | **Done** |
 | #31 | LOW | MenuItem registration (re-confirm #12) | Known |
+| #32 | LOW | `inspect_uss` theme chain resolution | **Done** |
 
 ### What Worked Well
 - `editor_eval` handled all PanelSettings/UIDocument operations flexibly

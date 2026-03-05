@@ -43,7 +43,10 @@ namespace UnixxtyMCP.Editor.Tools
             };
         }
 
-        [MCPTool("hot_patch", "Hot-patch method bodies during Play Mode using Harmony. Edit code and see results instantly without domain reload.",
+        [MCPTool("hot_patch",
+            "Hot-patch method bodies during Play Mode using Harmony. Edit code and see results instantly without domain reload. " +
+            "For instance methods: use __instance to access the object (e.g. __instance.enabled, __instance.gameObject). " +
+            "For methods with return values: assign __result and return false to override the return value.",
             Category = "Editor", DestructiveHint = true)]
         public static object Execute(
             [MCPParam("action", "Action: patch (apply changes), redirect (point method at another), rollback (revert all), status (list active)",
@@ -185,11 +188,22 @@ namespace UnixxtyMCP.Editor.Tools
 
             if (string.IsNullOrEmpty(newBody))
             {
+                // Build available parameters hint
+                var paramHints = new List<string>();
+                if (!method.IsStatic)
+                    paramHints.Add($"  __instance ({targetType.Name}) — the object instance");
+                foreach (var p in method.GetParameters())
+                    paramHints.Add($"  {p.Name} ({p.ParameterType.Name})");
+                if (method.ReturnType != typeof(void))
+                    paramHints.Add($"  __result (ref {method.ReturnType.Name}) — set to override return value");
+
                 return new
                 {
                     success = false,
                     error = "'new_body' is required for explicit patch mode.",
-                    hint = "Provide the method body code (everything inside the { })."
+                    hint = "Provide the method body code (everything inside the { }). " +
+                           "Use 'return false;' at the end to skip the original method.",
+                    available_parameters = paramHints
                 };
             }
 
@@ -198,13 +212,24 @@ namespace UnixxtyMCP.Editor.Tools
                 var replacement = BuildReplacementMethod(method, newBody, targetType);
                 if (replacement == null)
                 {
+                    var availableParams = new List<string>();
+                    if (!method.IsStatic)
+                        availableParams.Add($"__instance ({targetType.Name})");
+                    foreach (var p in method.GetParameters())
+                        availableParams.Add($"{p.Name} ({p.ParameterType.Name})");
+                    if (method.ReturnType != typeof(void))
+                        availableParams.Add($"__result (ref {method.ReturnType.Name})");
+
                     return new
                     {
                         success = false,
                         error = $"Runtime compilation failed. {(RoslynCompiler.IsAvailable ? "Check Unity console for details." : RoslynCompiler.LoadError)}",
                         roslyn_available = RoslynCompiler.IsAvailable,
-                        hint = "Use action 'redirect' to point at an already-compiled method, " +
-                               "or use manage_script to save changes to disk and exit play mode to recompile.",
+                        hint = "For instance methods, use __instance to access the object (e.g. __instance.gameObject). " +
+                               "Private fields require reflection: " +
+                               "typeof(ClassName).GetField(\"_fieldName\", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)?.GetValue(__instance). " +
+                               "Or use 'redirect' to point at an already-compiled method.",
+                        available_parameters = availableParams,
                         body_saved = false
                     };
                 }
@@ -228,7 +253,10 @@ namespace UnixxtyMCP.Editor.Tools
                 {
                     success = false,
                     error = $"Failed to patch '{methodName}': {ex.Message}",
-                    details = ex.InnerException?.Message
+                    details = ex.InnerException?.Message,
+                    hint = "If this call timed out, the Roslyn compilation may have hung. " +
+                           "Try action 'rollback' first, then retry with simpler code. " +
+                           "Or use manage_script to edit the file directly and exit play mode to recompile."
                 };
             }
         }
