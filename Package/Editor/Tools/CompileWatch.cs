@@ -112,9 +112,39 @@ namespace UnixxtyMCP.Editor.Tools
                 };
             }
 
+            // Auto-timeout: if compilation has been running for over 60 seconds, mark as failed.
+            // This prevents get_job from returning "compiling" forever if a domain reload
+            // interrupted the compilation callbacks.
+            if (job.status == CompileJobStatus.Compiling)
+            {
+                long elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - job.startedUnixMs;
+                if (elapsed > 60000 && !EditorApplication.isCompiling)
+                {
+                    job.status = CompileJobStatus.Succeeded;
+                    job.finishedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    // If Unity isn't compiling anymore but our job never got the callback,
+                    // it likely succeeded during a domain reload that ate the event.
+                }
+                else if (elapsed > 120000)
+                {
+                    job.status = CompileJobStatus.Failed;
+                    job.finishedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    job.errors.Add(new CompileError
+                    {
+                        message = "Compilation timed out after 120 seconds. Check Unity console for details.",
+                        severity = "error"
+                    });
+                }
+            }
+
             string hint = null;
             if (job.status == CompileJobStatus.Compiling)
-                hint = "Still compiling. If you get a domain reload error, wait 2-3 seconds and retry.";
+            {
+                long elapsed = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() - job.startedUnixMs;
+                hint = elapsed > 30000
+                    ? $"Still compiling after {elapsed / 1000}s. If Unity is not actually compiling, this job may be orphaned."
+                    : "Still compiling. If you get a domain reload error, wait 2-3 seconds and retry.";
+            }
             else if (job.hasRetried && job.status == CompileJobStatus.Succeeded)
                 hint = "Succeeded after auto-retry (stale csproj references were refreshed).";
             else if (job.hasRetried && job.status == CompileJobStatus.Failed)

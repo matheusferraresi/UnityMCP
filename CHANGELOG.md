@@ -5,6 +5,34 @@ All notable changes to Unixxty MCP will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - 2026-03-05
+
+### Added
+- **UI Toolkit management** (`manage_uitoolkit`) - 9 actions: create PanelSettings, add UIDocuments, query runtime panels, preview hidden UI, validate USS var() references, scaffold UXML+USS+C# screens
+- **Plugin integration tools** - 4 optional tools for popular Asset Store packages:
+  - `playmaker_manage` (15 actions) - PlayMaker FSM management via reflection
+  - `feel_manage` (10 actions) - MoreMountains Feel feedback system
+  - `flatkit_manage` (8 actions) - Flat Kit toon shading configuration
+  - `dotween_manage` (9 actions) - DOTween animation control
+- **Editor eval** (`editor_eval`) - Compile and execute arbitrary C# in the editor via Roslyn
+- **Wait for ready** (`wait_for_ready`) - Poll until Unity finishes compiling/importing/reloading
+- **Animation clips** (`animation_clip`) - Create, inspect, and assign AnimationClips with keyframe curves
+- **Input simulation** (`simulate_input`) - Simulate keyboard, mouse, and gamepad input during Play Mode
+- **Exclusive operation coordinator** in sidecar - prevents multi-agent conflicts for compile/playmode/scene operations
+
+### Fixed
+- `compile_and_watch` auto-timeout: `get_job` now detects orphaned jobs (60s if Unity stopped compiling, 120s hard limit)
+- `compile_and_watch` auto-attaches to externally-triggered compilations instead of failing
+- `compile_and_watch` CS2001 auto-retry when deleted files leave stale csproj references
+- `execute_menu_item` now checks `EditorApplication.isCompiling` and returns clear error instead of misleading "menu item may not exist"
+- `simulate_input` auto-focuses Game view warning when input may not be received
+- Oversized MCP responses auto-saved to file instead of failing silently
+
+### Changed
+- Tool count increased from 68 to 76 (72 core + 4 plugin)
+- README updated with complete tool listing and plugin documentation
+- Improved `get_job` hints for long-running compilations
+
 ## [2.0.0] - 2026-02-28
 
 ### Added
@@ -34,7 +62,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Tool count increased from 45 to 68
 - `hot_patch` no longer requires `USE_ROSLYN` define - Roslyn loads dynamically from Unity's installation
 - Updated package metadata for Asset Store readiness
-- Comprehensive documentation rewrite covering all 68 tools
 
 ## [1.6.9] - 2025-12-15
 

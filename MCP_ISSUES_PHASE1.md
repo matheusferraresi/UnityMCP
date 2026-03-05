@@ -232,18 +232,18 @@ The error message is misleading — the menu item exists but Unity hasn't regist
 
 ## Updated Summary
 
-| # | Issue | Priority | Effort |
-|---|-------|----------|--------|
-| 1 | Domain reload resilience | HIGH | Medium (proxy-level retry) |
-| 2 | scene_save path duplication | LOW | Trivial |
-| 3 | compile_and_watch auto-attach | MEDIUM | Medium |
-| 4 | wait_for_ready tool | MEDIUM | Small |
-| 5 | console_read timestamp filter | LOW | Small |
-| 6 | scene_screenshot no Canvas in edit mode | LOW | Trivial (doc) |
-| 7 | execute_menu_item misleading error during compile | MEDIUM | Small |
-| 8 | compile_and_watch empty on domain reload | LOW | Small |
-| 9 | compile_and_watch hangs indefinitely | HIGH | Small (add timeout) |
-| 10 | hot_patch can't access instance members | MEDIUM | Medium |
-| 11 | hot_patch timeout on retry | LOW | Small |
+| # | Issue | Priority | Effort | Status |
+|---|-------|----------|--------|--------|
+| 1 | Domain reload resilience | HIGH | Medium (proxy-level retry) | Open (sidecar handles retries) |
+| 2 | scene_save path duplication | LOW | Trivial | Cannot reproduce — may be fixed |
+| 3 | compile_and_watch auto-attach | MEDIUM | Medium | **FIXED** (auto-creates tracking job) |
+| 4 | wait_for_ready tool | MEDIUM | Small | **FIXED** (wait_for_ready tool exists) |
+| 5 | console_read timestamp filter | LOW | Small | Open |
+| 6 | scene_screenshot no Canvas in edit mode | LOW | Trivial (doc) | Open (Unity limitation) |
+| 7 | execute_menu_item misleading error during compile | MEDIUM | Small | **FIXED** (checks isCompiling) |
+| 8 | compile_and_watch empty on domain reload | LOW | Small | **FIXED** (auto-attach + sidecar retry) |
+| 9 | compile_and_watch hangs indefinitely | HIGH | Small (add timeout) | **FIXED** (60s/120s auto-timeout in get_job) |
+| 10 | hot_patch can't access instance members | MEDIUM | Medium | Open |
+| 11 | hot_patch timeout on retry | LOW | Small | Open |
 
 **Top priority cluster**: Issues 1, 3, 4, 7, 8, 9 are all domain-reload-related. A single proxy-level solution (Issue 1) would fix most of them.                                                                        

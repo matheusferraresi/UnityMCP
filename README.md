@@ -11,7 +11,7 @@ Unity-native [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) se
 
 - **100% Unity-native** - Runs entirely inside the Unity Editor as a single package. No Node.js, Python, or external runtimes to install or maintain.
 - **Zero telemetry** - Completely private Unity automation. No data collection.
-- **68 built-in tools** - Create GameObjects, run tests, build projects, manipulate scenes, hot-patch code, and more.
+- **76 built-in tools** - Create GameObjects, run tests, build projects, manipulate scenes, hot-patch code, and more — including 4 optional plugin tools for PlayMaker, Feel, Flat Kit, and DOTween.
 - **Play Mode hot patching** - Edit method bodies during Play Mode with Harmony 2.3.3 — see changes instantly without domain reload.
 - **AI vision** - Capture Game/Scene View screenshots as base64 PNG for multimodal AI models.
 - **28 built-in resources** - Read-only access to project settings, scene state, console output, and more.
@@ -134,12 +134,12 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 
 ## Available MCP Tools
 
-68 built-in tools organized by category:
+76 built-in tools organized by category:
 
 > **Tip:** Use `search_tools` with no arguments for a quick category overview, or pass a `query` or `category` to explore further.
 
 <details>
-<summary>View all 68 built-in tools (click to expand)</summary>
+<summary>View all 76 built-in tools (click to expand)</summary>
 
 ### GameObject Management
 - **gameobject_manage** - Create, modify, delete, duplicate GameObjects, or move them relative to other objects
@@ -160,7 +160,7 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 ### Asset Management
 - **asset_manage** - Create, delete, move, rename, duplicate, import, search, or get info about assets
 - **prefab_manage** - Open/close prefab stage, save prefabs, or create prefabs from GameObjects
-- **manage_material** - Create materials, set properties, assign to renderers, or set colors
+- **manage_material** - Create materials, set properties, assign to renderers, inspect renderer materials
 - **manage_texture** - Modify texture import settings (format, compression, size, etc.)
 - **manage_shader** - Create and manage shader assets
 - **manage_script** - Create, read, update, delete, and validate C# scripts
@@ -169,14 +169,24 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **file_import** - Import external files from disk into Assets/ with auto-configured import settings
 - **asset_preview** - Get asset preview thumbnails as base64 PNG (prefabs, materials, textures, models)
 
-### UI (UGUI)
+### UI (UGUI / Canvas)
 - **manage_ugui** - Create and modify Canvas, Button, Text (TMP), Image, Panel, ScrollView, InputField, Slider, Toggle, Dropdown
+
+### UI Toolkit
+- **manage_uitoolkit** - Create PanelSettings/UIDocuments, query runtime panels, preview hidden UI, validate USS, scaffold screens
+- **uitoolkit_query** - Query VisualElements in EditorWindows with compact overview and drill-down refs
+- **uitoolkit_get_styles** - Get computed USS styles for a VisualElement
+- **uitoolkit_click** - Click a button, toggle, or clickable element in an EditorWindow
+- **uitoolkit_get_value** - Get the current value from an input field or control
+- **uitoolkit_set_value** - Set the value of an input field or control
+- **uitoolkit_navigate** - Expand/collapse foldouts or select tabs in an EditorWindow
 
 ### Script Editing & Compilation
 - **smart_edit** - Apply targeted edits via search/replace, line operations, or unified diff with validation
 - **validate_script_advanced** - Validate C# scripts with Roslyn semantic diagnostics
 - **compile_and_watch** - Trigger script compilation and get structured error/warning results
 - **recompile_scripts** - Force Unity to recompile all scripts
+- **editor_eval** - Compile and execute arbitrary C# code in the Unity Editor via Roslyn
 
 ### Hot Patching (Harmony 2.3.3)
 - **hot_patch** - Patch method bodies during Play Mode using Harmony — edit code and see results instantly without domain reload
@@ -184,8 +194,13 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 ### Vision & AI
 - **vision_capture** - Capture Game View or Scene View as base64 PNG for multimodal AI vision
 
-### Play Mode Debug
+### Play Mode
+- **playmode_enter** - Enter play mode
+- **playmode_exit** - Exit play mode
+- **playmode_pause** - Toggle or set pause state
+- **playmode_step** - Advance a single frame while paused
 - **debug_play** - Automated play testing: enter play, wait, capture state snapshot, return results
+- **simulate_input** - Simulate keyboard, mouse, and gamepad input during Play Mode
 
 ### Build & Testing
 - **build_start** - Start a player build asynchronously, returns job_id for polling
@@ -194,15 +209,12 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **tests_get_job** - Get test run job status and results
 
 ### Editor Control
-- **playmode_enter** - Enter play mode
-- **playmode_exit** - Exit play mode
-- **playmode_pause** - Toggle or set pause state
-- **playmode_step** - Advance a single frame while paused
 - **selection_get** - Get currently selected objects in the Unity Editor
 - **selection_set** - Set selection by instance IDs or asset paths
 - **execute_menu_item** - Execute Unity Editor menu items by path (with safety blacklist)
-- **manage_editor** - Manage editor state, tags, layers, and tools
+- **manage_editor** - Manage editor state, tags, layers, tools, domain reload
 - **unity_refresh** - Refresh Unity asset database and optionally request script compilation
+- **wait_for_ready** - Wait until Unity finishes compiling, importing, or reloading
 - **search_tools** - Search available tools by name, description, or category
 - **package_manage** - Manage Unity packages: add from registry/git/disk, remove, list, search
 - **undo_redo** - Control Unity's undo/redo system: undo, redo, get history, collapse groups
@@ -213,6 +225,10 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **profiler_start** - Start profiler recording, returns job_id for polling
 - **profiler_stop** - Stop profiler recording and finalize job
 - **profiler_get_job** - Poll profiler job status and get captured data
+
+### Animation
+- **animation_controller** - Manage AnimatorControllers: create, add states, transitions, parameters, layers
+- **animation_clip** - Create, inspect, and assign AnimationClips with keyframe curves
 
 ### Type Reflection
 - **type_inspector** - Inspect C# types: fields, properties, methods, attributes, inheritance chain
@@ -232,17 +248,6 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 ### Configuration
 - **server_instructions** - Manage custom per-project AI instructions sent on MCP connection
 
-### Animation
-- **animation_controller** - Manage AnimatorControllers: create, add states, transitions, parameters, layers
-
-### UI Toolkit
-- **uitoolkit_query** - Query VisualElements in EditorWindows with compact overview and drill-down refs
-- **uitoolkit_get_styles** - Get computed USS styles for a VisualElement
-- **uitoolkit_click** - Click a button, toggle, or clickable element in an EditorWindow
-- **uitoolkit_get_value** - Get the current value from an input field or control
-- **uitoolkit_set_value** - Set the value of an input field or control
-- **uitoolkit_navigate** - Expand/collapse foldouts or select tabs in an EditorWindow
-
 ### Batch Operations
 - **batch_execute** - Execute multiple tool calls in a single batch (10-100x faster than sequential)
 
@@ -251,6 +256,26 @@ Replace `<API_KEY>` with your generated API key and `<LAN_IP>` with your Unity m
 - **test_add** - Add two numbers (parameter handling test)
 - **test_unity_info** - Get basic Unity editor information
 - **test_list_scenes** - List all scenes in build settings
+
+</details>
+
+### Plugin Tools (Optional)
+
+4 additional tools that integrate with popular Asset Store packages. These require the corresponding package to be installed and their scripting define to be set in Player Settings.
+
+<details>
+<summary>View plugin tools (click to expand)</summary>
+
+| Tool | Package Required | Define | Actions |
+|------|-----------------|--------|---------|
+| **playmaker_manage** | PlayMaker | `UNITY_MCP_PLAYMAKER` | 15 actions: add/list/inspect FSMs, get/set variables, send events, manage states/transitions/actions |
+| **feel_manage** | Feel (MoreMountains) | `UNITY_MCP_FEEL` | 10 actions: create feedback players, add/remove/configure feedbacks, play/stop, inspect |
+| **flatkit_manage** | Flat Kit | `UNITY_MCP_FLATKIT` | 8 actions: outline/fog settings, toggle features, inspect renderer, apply presets, batch materials |
+| **dotween_manage** | DOTween (Demigiant) | `UNITY_MCP_DOTWEEN` | 9 actions: status, kill/pause/play tweens, setup, create tweens and sequences |
+
+To enable: `Edit > Project Settings > Player > Scripting Define Symbols`, add the defines separated by semicolons.
+
+All plugin tools use runtime reflection to avoid hard dependencies on the plugin assemblies.
 
 </details>
 
