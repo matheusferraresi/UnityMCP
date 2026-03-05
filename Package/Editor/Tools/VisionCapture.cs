@@ -154,7 +154,9 @@ namespace UnixxtyMCP.Editor.Tools
                 var gameView = EditorWindow.GetWindow(gameViewType, false, null, false);
                 if (gameView == null) return null;
 
+                // Repaint all views to ensure UITK panels are composited into the frame
                 gameView.Repaint();
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
 
                 var cameras = Camera.allCameras;
                 if (cameras.Length == 0 && Camera.main == null)
@@ -169,6 +171,9 @@ namespace UnixxtyMCP.Editor.Tools
                 camera.targetTexture = rt;
                 camera.Render();
                 camera.targetTexture = prevRT;
+
+                // Composite UITK panels on top of the camera render
+                CompositeUIToolkitPanels(rt);
 
                 var tex = new Texture2D(targetWidth, captureHeight, TextureFormat.RGB24, false);
                 var prevActive = RenderTexture.active;
@@ -202,6 +207,9 @@ namespace UnixxtyMCP.Editor.Tools
                 if (camera == null)
                     return new CaptureData { Error = "Scene View camera not available." };
 
+                // Repaint to ensure UITK panels are up-to-date
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+
                 int captureHeight = targetHeight > 0 ? targetHeight : Mathf.RoundToInt(targetWidth * 0.75f);
 
                 var rt = new RenderTexture(targetWidth, captureHeight, 24, RenderTextureFormat.ARGB32);
@@ -228,6 +236,38 @@ namespace UnixxtyMCP.Editor.Tools
             catch (Exception ex)
             {
                 return new CaptureData { Error = ex.Message };
+            }
+        }
+
+        /// <summary>
+        /// Renders all active UI Toolkit panels into a RenderTexture by using the
+        /// Game View's built-in panel rendering. This captures UITK overlays that
+        /// Camera.Render() alone misses since UITK is composited at a different stage.
+        /// </summary>
+        private static void CompositeUIToolkitPanels(RenderTexture target)
+        {
+            try
+            {
+                // Use UIElementsRuntimeUtility to repaint active panels onto the target RT.
+                // This is the internal path Unity uses to composite UITK panels in the Game View.
+                var runtimeUtilType = typeof(UnityEngine.UIElements.VisualElement).Assembly
+                    .GetType("UnityEngine.UIElements.UIElementsRuntimeUtility");
+                if (runtimeUtilType == null) return;
+
+                var repaintMethod = runtimeUtilType.GetMethod("RepaintOverlayPanels",
+                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
+
+                if (repaintMethod != null)
+                {
+                    var prevActive = RenderTexture.active;
+                    RenderTexture.active = target;
+                    repaintMethod.Invoke(null, null);
+                    RenderTexture.active = prevActive;
+                }
+            }
+            catch
+            {
+                // Silently fail — camera-only capture still works, just without UITK overlay
             }
         }
     }

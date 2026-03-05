@@ -44,12 +44,12 @@ namespace UnixxtyMCP.Editor.Tools
         #endregion
 
         [MCPTool("manage_uitoolkit",
-            "Manage Unity UI Toolkit: create PanelSettings/UIDocuments, query runtime panels, preview hidden UI, validate USS, scaffold screens",
+            "Manage Unity UI Toolkit: create PanelSettings/UIDocuments, query runtime panels, preview hidden UI, validate USS, scaffold screens, debug overlays",
             Category = "UI", DestructiveHint = true)]
         public static object Execute(
             [MCPParam("action", "Action to perform", required: true,
                 Enum = new[] { "create_panel_settings", "create_uidocument", "list_uidocuments", "query_panel",
-                    "set_element_style", "preview_panel", "assign_theme", "inspect_uss", "scaffold_screen" })]
+                    "set_element_style", "preview_panel", "assign_theme", "inspect_uss", "scaffold_screen", "debug_overlay" })]
             string action,
             [MCPParam("path", "Asset path for create/inspect operations (e.g. 'Assets/UI/Panel.asset')")] string path = null,
             [MCPParam("target", "GameObject name/path/instanceId for UIDocument operations")] string target = null,
@@ -90,6 +90,7 @@ namespace UnixxtyMCP.Editor.Tools
                     "assign_theme" => AssignTheme(panelSettingsPath ?? path, themePath),
                     "inspect_uss" => InspectUSS(path, panelSettingsPath),
                     "scaffold_screen" => ScaffoldScreen(name, path, ns, baseClass, themePath, elements),
+                    "debug_overlay" => DebugOverlay(target, show),
                     _ => throw MCPException.InvalidParams($"Unknown action: '{action}'")
                 };
             }
@@ -419,6 +420,18 @@ namespace UnixxtyMCP.Editor.Tools
             // Show display:none explicitly (critical for hidden panels)
             if (element.resolvedStyle.display == DisplayStyle.None)
                 data["hidden"] = true;
+
+            // Include key resolved styles for layout debugging
+            var rs = element.resolvedStyle;
+            var style = new Dictionary<string, object>();
+            if (rs.opacity < 1f) style["opacity"] = MathF.Round(rs.opacity, 2);
+            if (rs.fontSize > 0) style["fontSize"] = MathF.Round(rs.fontSize, 1);
+            if (rs.width > 0 && !float.IsNaN(rs.width)) style["w"] = MathF.Round(rs.width, 1);
+            if (rs.height > 0 && !float.IsNaN(rs.height)) style["h"] = MathF.Round(rs.height, 1);
+            if (rs.backgroundColor.a > 0.01f) style["bg"] = ColorToHex(rs.backgroundColor);
+            if (rs.color != Color.clear) style["color"] = ColorToHex(rs.color);
+            if (style.Count > 0)
+                data["style"] = style;
 
             if (depth < maxDepth && element.childCount > 0)
             {
@@ -1101,6 +1114,122 @@ namespace UnixxtyMCP.Editor.Tools
             sb.AppendLine("    }");
             sb.AppendLine("}");
             return sb.ToString();
+        }
+
+        #endregion
+
+        #region debug_overlay (Issue #35 — Visual Debug Overlay)
+
+        private static readonly HashSet<int> s_overlayPanels = new HashSet<int>();
+
+        private static object DebugOverlay(string target, bool? show)
+        {
+            if (string.IsNullOrEmpty(target))
+                throw MCPException.InvalidParams("'target' is required (UIDocument GameObject name).");
+
+            if (show == null)
+                show = true;
+
+            var doc = FindUIDocument(target);
+            var root = doc.rootVisualElement;
+            if (root == null)
+                throw new MCPException($"UIDocument '{doc.gameObject.name}' has no rootVisualElement.");
+
+            int key = doc.GetInstanceID();
+
+            if (show == true)
+            {
+                if (s_overlayPanels.Contains(key))
+                    return new { success = true, action = "debug_overlay", panel = doc.gameObject.name, message = "Debug overlay already active. Set show=false to remove." };
+
+                ApplyDebugStyles(root, 0);
+                s_overlayPanels.Add(key);
+
+                int count = CountElements(root);
+                return new
+                {
+                    success = true,
+                    action = "debug_overlay_on",
+                    panel = doc.gameObject.name,
+                    elements = count,
+                    message = $"Debug overlay applied to {count} elements. Color-coded borders show depth (red→cyan→green→yellow→purple→pink). Set show=false to remove."
+                };
+            }
+            else
+            {
+                if (!s_overlayPanels.Contains(key))
+                    return new { success = true, action = "debug_overlay", panel = doc.gameObject.name, message = "No debug overlay active on this panel." };
+
+                RemoveDebugStyles(root);
+                s_overlayPanels.Remove(key);
+
+                return new
+                {
+                    success = true,
+                    action = "debug_overlay_off",
+                    panel = doc.gameObject.name,
+                    message = "Debug overlay removed."
+                };
+            }
+        }
+
+        private static readonly Color[] s_debugColors = new[]
+        {
+            new Color(1f, 0f, 0f, 0.7f),       // red
+            new Color(0f, 0.7f, 1f, 0.7f),      // cyan
+            new Color(0f, 1f, 0.4f, 0.7f),      // green
+            new Color(1f, 0.78f, 0f, 0.7f),     // yellow
+            new Color(0.78f, 0f, 1f, 0.7f),     // purple
+            new Color(1f, 0.4f, 0.78f, 0.7f),   // pink
+        };
+
+        private static void ApplyDebugStyles(VisualElement element, int depth)
+        {
+            Color borderColor = s_debugColors[depth % s_debugColors.Length];
+            Color bgColor = new Color(borderColor.r, borderColor.g, borderColor.b, 0.04f);
+
+            element.AddToClassList("mcp-dbg");
+
+            element.style.borderTopWidth = 1;
+            element.style.borderBottomWidth = 1;
+            element.style.borderLeftWidth = 1;
+            element.style.borderRightWidth = 1;
+            element.style.borderTopColor = borderColor;
+            element.style.borderBottomColor = borderColor;
+            element.style.borderLeftColor = borderColor;
+            element.style.borderRightColor = borderColor;
+
+            if (element.resolvedStyle.backgroundColor.a < 0.01f)
+                element.style.backgroundColor = bgColor;
+
+            foreach (var child in element.Children())
+                ApplyDebugStyles(child, depth + 1);
+        }
+
+        private static void RemoveDebugStyles(VisualElement element)
+        {
+            element.RemoveFromClassList("mcp-dbg");
+
+            element.style.borderTopWidth = StyleKeyword.Null;
+            element.style.borderBottomWidth = StyleKeyword.Null;
+            element.style.borderLeftWidth = StyleKeyword.Null;
+            element.style.borderRightWidth = StyleKeyword.Null;
+            element.style.borderTopColor = StyleKeyword.Null;
+            element.style.borderBottomColor = StyleKeyword.Null;
+            element.style.borderLeftColor = StyleKeyword.Null;
+            element.style.borderRightColor = StyleKeyword.Null;
+            element.style.backgroundColor = StyleKeyword.Null;
+
+            foreach (var child in element.Children())
+                RemoveDebugStyles(child);
+        }
+
+        private static int CountElements(VisualElement root)
+        {
+            int count = 1;
+            foreach (var child in root.Children())
+                count += CountElements(child);
+            return count;
         }
 
         #endregion

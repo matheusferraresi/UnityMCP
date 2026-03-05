@@ -164,6 +164,9 @@ When provided, the tool resolves the PanelSettings → ThemeStyleSheet → impor
 | #30 | LOW | Scaffold templates | **Done** |
 | #31 | LOW | MenuItem registration (re-confirm #12) | Known |
 | #32 | LOW | `inspect_uss` theme chain resolution | **Done** |
+| #33 | HIGH | `scene_screenshot`/`vision_capture` misses UITK | **Done** |
+| #34 | MEDIUM | `uitoolkit_query` resolved styles | **Done** |
+| #35 | LOW | UITK visual debug overlay | **Done** |
 
 ### What Worked Well
 - `editor_eval` handled all PanelSettings/UIDocument operations flexibly
@@ -172,3 +175,33 @@ When provided, the tool resolves the PanelSettings → ThemeStyleSheet → impor
 - `console_read` confirmed zero runtime errors during play mode
 - `scene_save` persisted UIDocument additions to the scene
 - `wait_for_ready` correctly waited for domain reload after play mode exit
+
+---
+
+## Issue 33: `scene_screenshot` / `vision_capture` Cannot See UITK Panels (HIGH)
+
+**Problem**: Screenshots taken via `scene_screenshot` or `vision_capture` do not capture UI Toolkit panels. The UI is invisible in the captured image, making it impossible to visually verify UITK layouts through MCP.
+
+**Impact**: HIGH — this is the biggest gap for UITK workflows. We had a working UI but couldn't see it through MCP tools.
+
+**Proposed Fix**: Call `UnityEditorInternal.InternalEditorUtility.RepaintAllViews()` before capture, or use the panel's `Repaint()` + render-to-RenderTexture approach to ensure UITK panels are composited into the frame.
+
+---
+
+## Issue 34: `uitoolkit_query` Should Return Resolved Styles (MEDIUM)
+
+**Problem**: The existing `manage_uitoolkit > query_panel` returns the element tree structure but not the computed/resolved style values. During debugging, we frequently needed `resolvedStyle` data (fontSize, color, opacity, backgroundColor, layout rect) and had to write custom `editor_eval` scripts to get it.
+
+**Impact**: MEDIUM — workaround exists (`editor_eval`) but adds friction to every layout debugging session.
+
+**Proposed Fix**: `query_panel` should include `resolvedStyle` values alongside the element tree. At minimum: `fontSize`, `color`, `opacity`, `backgroundColor`, `width`, `height`, `left`, `top` from `resolvedStyle`.
+
+---
+
+## Issue 35: Add UITK Visual Debug Overlay Tool (LOW)
+
+**Problem**: When debugging UITK layout issues, there's no quick way to visualize element boundaries. Browser DevTools has element highlighting — we need the equivalent for Unity UITK panels.
+
+**Impact**: LOW — nice to have, not blocking. Would make layout issues immediately obvious.
+
+**Proposed Fix**: A tool action (e.g., `manage_uitoolkit > debug_overlay`) that temporarily adds visible borders and semi-transparent backgrounds to all elements in a panel, similar to the `* { outline: 1px solid red }` CSS trick. Should auto-remove after a configurable timeout or on next call.

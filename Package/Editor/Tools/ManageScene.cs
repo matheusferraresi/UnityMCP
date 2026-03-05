@@ -923,6 +923,16 @@ namespace UnixxtyMCP.Editor.Tools
 
             try
             {
+                // Repaint all views including UITK panels so they composite into the next capture
+                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
+            }
+            catch
+            {
+                // Ignore
+            }
+
+            try
+            {
                 EditorApplication.QueuePlayerLoopUpdate();
             }
             catch
