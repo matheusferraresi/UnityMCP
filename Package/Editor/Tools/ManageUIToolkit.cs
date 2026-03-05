@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
+using UnityEngine.TextCore.Text;
 using UnixxtyMCP.Editor.Core;
 using UnixxtyMCP.Editor.Utilities;
 
@@ -49,7 +50,8 @@ namespace UnixxtyMCP.Editor.Tools
         public static object Execute(
             [MCPParam("action", "Action to perform", required: true,
                 Enum = new[] { "create_panel_settings", "create_uidocument", "list_uidocuments", "query_panel",
-                    "set_element_style", "preview_panel", "assign_theme", "inspect_uss", "scaffold_screen", "debug_overlay" })]
+                    "set_element_style", "preview_panel", "assign_theme", "inspect_uss", "scaffold_screen", "debug_overlay",
+                    "create_font_asset", "create_text_settings", "set_panel_text_settings", "patch_uss" })]
             string action,
             [MCPParam("path", "Asset path for create/inspect operations (e.g. 'Assets/UI/Panel.asset')")] string path = null,
             [MCPParam("target", "GameObject name/path/instanceId for UIDocument operations")] string target = null,
@@ -72,7 +74,17 @@ namespace UnixxtyMCP.Editor.Tools
             [MCPParam("namespace", "C# namespace for scaffold_screen")] string ns = null,
             [MCPParam("base_class", "Base class for scaffold_screen controller (default: MonoBehaviour)")] string baseClass = null,
             [MCPParam("elements", "JSON array of elements for scaffold_screen: [{name, type, text}]")] object elements = null,
-            [MCPParam("filter", "Filter mode for query_panel: 'visible' (default) or 'all'")] string filter = "visible")
+            [MCPParam("filter", "Filter mode for query_panel: 'visible' (default) or 'all'")] string filter = "visible",
+            [MCPParam("ttf_path", "Path to .ttf/.otf font file for create_font_asset")] string ttfPath = null,
+            [MCPParam("output_path", "Output asset path for create operations")] string outputPath = null,
+            [MCPParam("sampling_pt", "Font sampling point size (default: 90)", Minimum = 1, Maximum = 300)] int? samplingPt = null,
+            [MCPParam("atlas_size", "Font atlas size in pixels (default: 1024)", Minimum = 64, Maximum = 8192)] int? atlasSize = null,
+            [MCPParam("render_mode", "Font render mode",
+                Enum = new[] { "SDFAA", "SDFAA_HINTED", "SMOOTH", "SMOOTH_HINTED", "RASTER", "RASTER_HINTED" })] string renderMode = null,
+            [MCPParam("population_mode", "Font atlas population mode",
+                Enum = new[] { "Dynamic", "Static" })] string populationMode = null,
+            [MCPParam("default_font_path", "Path to FontAsset for create_text_settings")] string defaultFontPath = null,
+            [MCPParam("text_settings_path", "Path to PanelTextSettings asset")] string textSettingsPath = null)
         {
             if (string.IsNullOrEmpty(action))
                 throw MCPException.InvalidParams("Action parameter is required.");
@@ -91,6 +103,10 @@ namespace UnixxtyMCP.Editor.Tools
                     "inspect_uss" => InspectUSS(path, panelSettingsPath),
                     "scaffold_screen" => ScaffoldScreen(name, path, ns, baseClass, themePath, elements),
                     "debug_overlay" => DebugOverlay(target, show),
+                    "create_font_asset" => CreateFontAsset(ttfPath ?? path, outputPath, samplingPt, atlasSize, renderMode, populationMode),
+                    "create_text_settings" => CreateTextSettings(outputPath ?? path, defaultFontPath),
+                    "set_panel_text_settings" => SetPanelTextSettings(panelSettingsPath ?? path, textSettingsPath),
+                    "patch_uss" => PatchUSS(path, selector, property, value),
                     _ => throw MCPException.InvalidParams($"Unknown action: '{action}'")
                 };
             }
@@ -1230,6 +1246,347 @@ namespace UnixxtyMCP.Editor.Tools
             foreach (var child in root.Children())
                 count += CountElements(child);
             return count;
+        }
+
+        #endregion
+
+        #region create_font_asset (Issue #37)
+
+        private static object CreateFontAsset(string ttfPath, string outputPath, int? samplingPt, int? atlasSize, string renderMode, string populationMode)
+        {
+            if (string.IsNullOrEmpty(ttfPath))
+                throw MCPException.InvalidParams("'ttf_path' (or 'path') is required — path to a .ttf or .otf font file.");
+
+            ttfPath = PathUtilities.NormalizePath(ttfPath);
+
+            var font = AssetLoadHelper.LoadWithHint<Font>(ttfPath, out string loadError);
+            if (font == null)
+                throw new MCPException(loadError);
+
+            int sp = samplingPt ?? 90;
+            int atlas = atlasSize ?? 1024;
+            int padding = Mathf.Max(sp / 10, 5);
+
+            GlyphRenderMode rm = renderMode?.ToUpperInvariant() switch
+            {
+                "SDFAA_HINTED" => GlyphRenderMode.SDFAA_HINTED,
+                "SMOOTH" => GlyphRenderMode.SMOOTH,
+                "SMOOTH_HINTED" => GlyphRenderMode.SMOOTH_HINTED,
+                "RASTER" => GlyphRenderMode.RASTER,
+                "RASTER_HINTED" => GlyphRenderMode.RASTER_HINTED,
+                _ => GlyphRenderMode.SDFAA
+            };
+
+            AtlasPopulationMode pm = populationMode?.ToLowerInvariant() switch
+            {
+                "static" => AtlasPopulationMode.Static,
+                _ => AtlasPopulationMode.Dynamic
+            };
+
+            if (string.IsNullOrEmpty(outputPath))
+            {
+                string dir = Path.GetDirectoryName(ttfPath).Replace('\\', '/');
+                string baseName = Path.GetFileNameWithoutExtension(ttfPath);
+                outputPath = $"{dir}/{baseName} SDF.asset";
+            }
+            else
+            {
+                outputPath = PathUtilities.NormalizePath(outputPath);
+                if (!outputPath.EndsWith(".asset"))
+                    outputPath += ".asset";
+            }
+
+            string folder = Path.GetDirectoryName(outputPath).Replace('\\', '/');
+            if (!PathUtilities.EnsureFolderExists(folder, out string folderErr))
+                throw new MCPException($"Failed to create folder: {folderErr}");
+
+            if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(outputPath) != null)
+                throw MCPException.InvalidParams($"Asset already exists at '{outputPath}'. Delete it first or choose a different output_path.");
+
+            var fontAsset = FontAsset.CreateFontAsset(font, sp, padding, rm, atlas, atlas, pm, true);
+            if (fontAsset == null)
+                throw new MCPException("FontAsset.CreateFontAsset returned null. Check font file validity.");
+
+            AssetDatabase.CreateAsset(fontAsset, outputPath);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                action = "create_font_asset",
+                source = ttfPath,
+                output = outputPath,
+                samplingPoint = sp,
+                atlasSize = atlas,
+                renderMode = rm.ToString(),
+                populationMode = pm.ToString(),
+                message = $"Created FontAsset at '{outputPath}' from '{ttfPath}'."
+            };
+        }
+
+        #endregion
+
+        #region create_text_settings (Issue #37)
+
+        private static object CreateTextSettings(string outputPath, string defaultFontPath)
+        {
+            if (string.IsNullOrEmpty(outputPath))
+                throw MCPException.InvalidParams("'output_path' (or 'path') is required.");
+
+            outputPath = PathUtilities.NormalizePath(outputPath);
+            if (!outputPath.EndsWith(".asset"))
+                outputPath += ".asset";
+
+            string folder = Path.GetDirectoryName(outputPath).Replace('\\', '/');
+            if (!PathUtilities.EnsureFolderExists(folder, out string folderErr))
+                throw new MCPException($"Failed to create folder: {folderErr}");
+
+            if (AssetDatabase.LoadAssetAtPath<UnityEngine.Object>(outputPath) != null)
+                throw MCPException.InvalidParams($"Asset already exists at '{outputPath}'.");
+
+            var textSettings = ScriptableObject.CreateInstance<PanelTextSettings>();
+            AssetDatabase.CreateAsset(textSettings, outputPath);
+
+            if (!string.IsNullOrEmpty(defaultFontPath))
+            {
+                defaultFontPath = PathUtilities.NormalizePath(defaultFontPath);
+                var fontAsset = AssetLoadHelper.LoadWithHint<FontAsset>(defaultFontPath, out string fontError);
+                if (fontAsset == null)
+                    throw new MCPException(fontError);
+
+                var so = new SerializedObject(textSettings);
+                var fontProp = so.FindProperty("m_DefaultFontAsset");
+                if (fontProp != null)
+                {
+                    fontProp.objectReferenceValue = fontAsset;
+                    so.ApplyModifiedPropertiesWithoutUndo();
+                }
+                else
+                {
+                    // Fallback: try public property via reflection
+                    var prop = typeof(PanelTextSettings).GetProperty("defaultFontAsset",
+                        System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance)
+                        ?? typeof(PanelTextSettings).BaseType?.GetProperty("defaultFontAsset",
+                            System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                    if (prop != null && prop.CanWrite)
+                        prop.SetValue(textSettings, fontAsset);
+                    else
+                        Debug.LogWarning("[ManageUIToolkit] Could not set default font — property not found.");
+                }
+            }
+
+            EditorUtility.SetDirty(textSettings);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                action = "create_text_settings",
+                output = outputPath,
+                defaultFont = defaultFontPath,
+                message = $"Created PanelTextSettings at '{outputPath}'."
+                    + (defaultFontPath != null ? $" Default font: '{defaultFontPath}'." : " No default font set.")
+            };
+        }
+
+        #endregion
+
+        #region set_panel_text_settings (Issue #37)
+
+        private static object SetPanelTextSettings(string panelPath, string textSettingsPath)
+        {
+            if (string.IsNullOrEmpty(panelPath))
+                throw MCPException.InvalidParams("'panel_settings_path' (or 'path') is required.");
+            if (string.IsNullOrEmpty(textSettingsPath))
+                throw MCPException.InvalidParams("'text_settings_path' is required.");
+
+            panelPath = PathUtilities.NormalizePath(panelPath);
+            textSettingsPath = PathUtilities.NormalizePath(textSettingsPath);
+
+            var panel = AssetDatabase.LoadAssetAtPath<PanelSettings>(panelPath);
+            if (panel == null)
+                throw MCPException.InvalidParams($"PanelSettings not found at '{panelPath}'.");
+
+            var textSettings = AssetDatabase.LoadAssetAtPath<PanelTextSettings>(textSettingsPath);
+            if (textSettings == null)
+                throw MCPException.InvalidParams($"PanelTextSettings not found at '{textSettingsPath}'.");
+
+            Undo.RecordObject(panel, "Set PanelTextSettings");
+            var so = new SerializedObject(panel);
+            var tsProp = so.FindProperty("m_TextSettings") ?? so.FindProperty("textSettings");
+            if (tsProp != null)
+            {
+                tsProp.objectReferenceValue = textSettings;
+                so.ApplyModifiedPropertiesWithoutUndo();
+            }
+            else
+            {
+                var prop = typeof(PanelSettings).GetProperty("textSettings",
+                    System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.Instance);
+                if (prop != null && prop.CanWrite)
+                    prop.SetValue(panel, textSettings);
+                else
+                    throw new MCPException("Cannot find textSettings property on PanelSettings.");
+            }
+
+            EditorUtility.SetDirty(panel);
+            AssetDatabase.SaveAssets();
+
+            return new
+            {
+                success = true,
+                action = "set_panel_text_settings",
+                panelSettings = panelPath,
+                textSettings = textSettingsPath,
+                message = $"Linked PanelTextSettings '{textSettingsPath}' to PanelSettings '{panelPath}'."
+            };
+        }
+
+        #endregion
+
+        #region patch_uss (Issue #39)
+
+        private static object PatchUSS(string ussPath, string selector, string property, string value)
+        {
+            if (string.IsNullOrEmpty(ussPath))
+                throw MCPException.InvalidParams("'path' is required (path to .uss file).");
+            if (string.IsNullOrEmpty(selector))
+                throw MCPException.InvalidParams("'selector' is required (USS selector, e.g. ':root', '.my-class', '#my-id').");
+            if (string.IsNullOrEmpty(property))
+                throw MCPException.InvalidParams("'property' is required (USS property name, e.g. 'background-color', '-unity-font-definition').");
+
+            ussPath = PathUtilities.NormalizePath(ussPath);
+            string fullPath = Path.Combine(Application.dataPath, "..", ussPath).Replace('\\', '/');
+
+            if (!File.Exists(fullPath))
+                throw MCPException.InvalidParams($"USS file not found: '{ussPath}'");
+
+            string originalContent = File.ReadAllText(fullPath);
+            string modifiedContent;
+            string actionName;
+            bool isRemoval = string.IsNullOrEmpty(value);
+
+            var (blockStart, braceOpen, braceClose) = FindSelectorBlock(originalContent, selector);
+
+            if (blockStart >= 0)
+            {
+                string blockContent = originalContent.Substring(braceOpen + 1, braceClose - braceOpen - 1);
+
+                var propPattern = new Regex(
+                    @"^(\s*)" + Regex.Escape(property) + @"\s*:\s*([^;]*);[ \t]*\r?\n?",
+                    RegexOptions.Multiline);
+                var propMatch = propPattern.Match(blockContent);
+
+                if (propMatch.Success)
+                {
+                    if (isRemoval)
+                    {
+                        string newBlock = blockContent.Remove(propMatch.Index, propMatch.Length);
+                        modifiedContent = originalContent.Substring(0, braceOpen + 1) + newBlock + originalContent.Substring(braceClose);
+                        actionName = "removed";
+                    }
+                    else
+                    {
+                        string indent = propMatch.Groups[1].Value;
+                        string newLine = $"{indent}{property}: {value};";
+                        string beforeProp = blockContent.Substring(0, propMatch.Index);
+                        string afterProp = blockContent.Substring(propMatch.Index + propMatch.Value.TrimEnd('\r', '\n').Length);
+                        string newBlock = beforeProp + newLine + afterProp;
+                        modifiedContent = originalContent.Substring(0, braceOpen + 1) + newBlock + originalContent.Substring(braceClose);
+                        actionName = "updated";
+                    }
+                }
+                else
+                {
+                    if (isRemoval)
+                    {
+                        return new
+                        {
+                            success = true,
+                            path = ussPath,
+                            action = "no_change",
+                            message = $"Property '{property}' not found in selector '{selector}'. Nothing to remove."
+                        };
+                    }
+
+                    string indent = DetectUSSIndent(blockContent);
+                    string newPropLine = $"{indent}{property}: {value};\n";
+                    modifiedContent = originalContent.Substring(0, braceClose) + newPropLine + originalContent.Substring(braceClose);
+                    actionName = "added";
+                }
+            }
+            else
+            {
+                if (isRemoval)
+                {
+                    return new
+                    {
+                        success = true,
+                        path = ussPath,
+                        action = "no_change",
+                        message = $"Selector '{selector}' not found. Nothing to remove."
+                    };
+                }
+
+                string newBlock = $"\n{selector} {{\n    {property}: {value};\n}}\n";
+                modifiedContent = originalContent.TrimEnd() + "\n" + newBlock;
+                actionName = "created";
+            }
+
+            File.WriteAllText(fullPath, modifiedContent);
+            AssetDatabase.ImportAsset(ussPath, ImportAssetOptions.ForceUpdate);
+
+            return new
+            {
+                success = true,
+                path = ussPath,
+                selector,
+                property,
+                value = isRemoval ? "(removed)" : value,
+                action = actionName,
+                message = actionName switch
+                {
+                    "updated" => $"Updated '{property}' to '{value}' in selector '{selector}'.",
+                    "added" => $"Added '{property}: {value}' to existing selector '{selector}'.",
+                    "created" => $"Created new selector '{selector}' with '{property}: {value}'.",
+                    "removed" => $"Removed '{property}' from selector '{selector}'.",
+                    _ => $"Patched '{selector}' in '{ussPath}'."
+                }
+            };
+        }
+
+        private static (int blockStart, int braceOpen, int braceClose) FindSelectorBlock(string content, string selector)
+        {
+            string escapedSelector = Regex.Escape(selector.Trim());
+            var pattern = new Regex(@"(?:^|\n|\})\s*" + escapedSelector + @"\s*\{", RegexOptions.Multiline);
+
+            var match = pattern.Match(content);
+            if (!match.Success)
+                return (-1, -1, -1);
+
+            int braceOpen = content.IndexOf('{', match.Index);
+            if (braceOpen < 0)
+                return (-1, -1, -1);
+
+            int depth = 1;
+            int braceClose = braceOpen + 1;
+            while (braceClose < content.Length && depth > 0)
+            {
+                if (content[braceClose] == '{') depth++;
+                else if (content[braceClose] == '}') depth--;
+                if (depth > 0) braceClose++;
+            }
+
+            if (depth != 0)
+                return (-1, -1, -1);
+
+            return (match.Index, braceOpen, braceClose);
+        }
+
+        private static string DetectUSSIndent(string blockContent)
+        {
+            var indentMatch = Regex.Match(blockContent, @"\n(\s+)\S");
+            return indentMatch.Success ? indentMatch.Groups[1].Value : "    ";
         }
 
         #endregion

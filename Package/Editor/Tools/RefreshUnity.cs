@@ -13,7 +13,7 @@ namespace UnixxtyMCP.Editor.Tools
     public static class RefreshUnity
     {
         private const int RetryAfterMs = 5000;
-        private const int WaitTimeoutMs = 60000;
+        private const int DefaultWaitTimeoutMs = 60000;
         private const int WaitPollIntervalMs = 100;
 
         /// <summary>
@@ -24,7 +24,9 @@ namespace UnixxtyMCP.Editor.Tools
             [MCPParam("mode", "Refresh mode: force or if_dirty (default: if_dirty)")] string mode = "if_dirty",
             [MCPParam("scope", "What to refresh: all or scripts (default: all)")] string scope = "all",
             [MCPParam("compile", "Compilation request: none or request (default: none)")] string compile = "none",
-            [MCPParam("wait_for_ready", "Wait for Unity to finish compiling/importing (default: false)")] bool waitForReady = false)
+            [MCPParam("wait_for_ready", "Wait for Unity to finish compiling/importing (default: false)")] bool waitForReady = false,
+            [MCPParam("timeout_ms", "Max milliseconds to wait when wait_for_ready=true (default: 60000, min: 1000, max: 300000)",
+                Minimum = 1000, Maximum = 300000)] int? timeoutMs = null)
         {
             // Validate mode parameter
             string normalizedMode = (mode ?? "if_dirty").ToLowerInvariant().Trim();
@@ -72,7 +74,9 @@ namespace UnixxtyMCP.Editor.Tools
 
             bool refreshTriggered = false;
             bool compileRequested = false;
+            bool timedOut = false;
             string hint = string.Empty;
+            int resolvedTimeout = Math.Clamp(timeoutMs ?? DefaultWaitTimeoutMs, 1000, 300000);
 
             try
             {
@@ -117,10 +121,12 @@ namespace UnixxtyMCP.Editor.Tools
 
                 if (shouldWait)
                 {
-                    bool isReady = WaitForUnityReady();
+                    bool isReady = WaitForUnityReady(resolvedTimeout);
                     if (!isReady)
                     {
-                        hint = "Timed out waiting for Unity to be ready. Unity may still be compiling or importing.";
+                        timedOut = true;
+                        hint = $"Timed out after {resolvedTimeout}ms waiting for Unity to be ready. " +
+                               "Unity may still be compiling or importing. Increase timeout_ms if needed.";
                     }
                 }
 
@@ -165,6 +171,8 @@ namespace UnixxtyMCP.Editor.Tools
                     refresh_triggered = refreshTriggered,
                     compile_requested = compileRequested,
                     resulting_state = resultingState,
+                    timed_out = timedOut,
+                    timeout_ms_used = shouldWait ? resolvedTimeout : (int?)null,
                     hint
                 };
             }
@@ -183,11 +191,11 @@ namespace UnixxtyMCP.Editor.Tools
         /// Waits for Unity to be ready (not compiling, not importing, not playing, tests not running).
         /// </summary>
         /// <returns>True if Unity became ready within the timeout, false otherwise.</returns>
-        private static bool WaitForUnityReady()
+        private static bool WaitForUnityReady(int maxWaitMs)
         {
             int elapsedMs = 0;
 
-            while (elapsedMs < WaitTimeoutMs)
+            while (elapsedMs < maxWaitMs)
             {
                 if (IsUnityReady())
                 {

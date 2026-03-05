@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 
@@ -81,13 +82,67 @@ namespace UnixxtyMCP.Editor.Tools
                 };
             }
 
+            // Pre-checks: existence and validation
+            bool? menuExists = CheckMenuItemExists(normalizedMenuPath);
+            bool menuEnabled = EditorApplication.ValidateMenuItem(normalizedMenuPath);
+
+            // If we know for certain the menu doesn't exist, fail fast with diagnostics
+            if (menuExists == false)
+            {
+                return new
+                {
+                    success = false,
+                    error = $"Menu item not found: '{normalizedMenuPath}'.",
+                    menu_path = normalizedMenuPath,
+                    diagnostics = new { found = false, enabled = false }
+                };
+            }
+
+            // If it exists but is disabled, report that clearly
+            if (menuExists == true && !menuEnabled)
+            {
+                return new
+                {
+                    success = false,
+                    error = $"Menu item '{normalizedMenuPath}' exists but is disabled. " +
+                            "Its [MenuItem] validation function returned false — check required conditions (selection, scene state, etc.).",
+                    menu_path = normalizedMenuPath,
+                    diagnostics = new { found = true, enabled = false }
+                };
+            }
+
+            // Execute with log capture to catch exceptions thrown inside the menu item
+            string capturedError = null;
+            string capturedStack = null;
+
+            void LogHandler(string message, string stackTrace, LogType type)
+            {
+                if (type == LogType.Exception || type == LogType.Error)
+                {
+                    capturedError ??= message;
+                    capturedStack ??= stackTrace;
+                }
+            }
+
+            Application.logMessageReceived += LogHandler;
             try
             {
-                // Execute the menu item
                 bool executed = EditorApplication.ExecuteMenuItem(normalizedMenuPath);
 
                 if (executed)
                 {
+                    // Success — but check if errors were logged during execution
+                    if (capturedError != null)
+                    {
+                        return new
+                        {
+                            success = true,
+                            message = $"Menu item '{normalizedMenuPath}' executed but produced errors.",
+                            menu_path = normalizedMenuPath,
+                            warnings = new { exception = capturedError, stack_trace = capturedStack }
+                        };
+                    }
+
                     return new
                     {
                         success = true,
@@ -97,12 +152,21 @@ namespace UnixxtyMCP.Editor.Tools
                 }
                 else
                 {
-                    // ExecuteMenuItem returns false if the menu item doesn't exist or couldn't be executed
+                    // Execution returned false — provide diagnostics
                     return new
                     {
                         success = false,
-                        error = $"Failed to execute menu item: '{normalizedMenuPath}'. The menu item may not exist, may be disabled, or may require specific conditions to be met.",
-                        menu_path = normalizedMenuPath
+                        error = capturedError != null
+                            ? $"Menu item '{normalizedMenuPath}' threw an exception during execution."
+                            : $"Menu item '{normalizedMenuPath}' returned false. It may require specific editor state (e.g., a selection, a scene open, play mode).",
+                        menu_path = normalizedMenuPath,
+                        diagnostics = new
+                        {
+                            found = menuExists ?? (bool?)null,
+                            enabled = menuEnabled,
+                            exception = capturedError,
+                            stack_trace = capturedStack
+                        }
                     };
                 }
             }
@@ -112,10 +176,62 @@ namespace UnixxtyMCP.Editor.Tools
                 return new
                 {
                     success = false,
-                    error = $"Error executing menu item '{normalizedMenuPath}': {exception.Message}",
-                    menu_path = normalizedMenuPath
+                    error = $"Menu item '{normalizedMenuPath}' threw an unhandled exception: {exception.Message}",
+                    menu_path = normalizedMenuPath,
+                    diagnostics = new
+                    {
+                        found = menuExists ?? (bool?)null,
+                        enabled = menuEnabled,
+                        exception = exception.Message,
+                        stack_trace = exception.StackTrace
+                    }
                 };
             }
+            finally
+            {
+                Application.logMessageReceived -= LogHandler;
+            }
+        }
+
+        /// <summary>
+        /// Checks if a menu item exists using Unity's internal Menu class via reflection.
+        /// Returns null if the check is not available (reflection failed).
+        /// </summary>
+        private static bool? CheckMenuItemExists(string menuPath)
+        {
+            try
+            {
+                var menuType = typeof(EditorApplication).Assembly.GetType("UnityEditor.Menu");
+                if (menuType == null) return null;
+
+                // Unity 6 has Menu.MenuItemExists(string, bool)
+                var existsMethod = menuType.GetMethod("MenuItemExists",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (existsMethod != null)
+                {
+                    var parameters = existsMethod.GetParameters();
+                    if (parameters.Length == 1)
+                        return (bool)existsMethod.Invoke(null, new object[] { menuPath });
+                    if (parameters.Length == 2)
+                        return (bool)existsMethod.Invoke(null, new object[] { menuPath, false });
+                }
+
+                // Fallback: try GetMenuItems
+                var getItemsMethod = menuType.GetMethod("GetMenuItems",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (getItemsMethod != null)
+                {
+                    var result = getItemsMethod.Invoke(null, new object[] { menuPath, false, false });
+                    if (result is System.Array arr)
+                        return arr.Length > 0;
+                }
+            }
+            catch
+            {
+                // Reflection failed — can't determine
+            }
+
+            return null;
         }
 
         /// <summary>
