@@ -349,7 +349,6 @@ namespace UnixxtyMCP.Editor.Tools
 
             var changes = new List<object>();
             int maxLines = Math.Max(oldLines.Length, newLines.Length);
-            int contextSize = 2;
             var changedLineNumbers = new HashSet<int>();
 
             // Find changed line numbers using simple LCS-like comparison

@@ -84,7 +84,7 @@ namespace UnixxtyMCP.Editor.Tools
 
             // Pre-checks: existence and validation
             bool? menuExists = CheckMenuItemExists(normalizedMenuPath);
-            bool menuEnabled = EditorApplication.ValidateMenuItem(normalizedMenuPath);
+            bool menuEnabled = ValidateMenuItem(normalizedMenuPath);
 
             // If we know for certain the menu doesn't exist, fail fast with diagnostics
             if (menuExists == false)
@@ -232,6 +232,30 @@ namespace UnixxtyMCP.Editor.Tools
             }
 
             return null;
+        }
+
+        /// <summary>
+        /// Validates whether a menu item is enabled using reflection.
+        /// EditorApplication.ValidateMenuItem was removed in Unity 6.
+        /// </summary>
+        private static bool ValidateMenuItem(string menuPath)
+        {
+            try
+            {
+                var menuType = typeof(EditorApplication).Assembly.GetType("UnityEditor.Menu");
+                if (menuType == null) return true; // assume enabled if can't check
+
+                var validateMethod = menuType.GetMethod("ValidateMenuItem",
+                    BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic);
+                if (validateMethod != null)
+                    return (bool)validateMethod.Invoke(null, new object[] { menuPath });
+            }
+            catch
+            {
+                // Reflection failed — assume enabled
+            }
+
+            return true;
         }
 
         /// <summary>

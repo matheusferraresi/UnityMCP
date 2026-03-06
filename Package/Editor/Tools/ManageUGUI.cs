@@ -692,7 +692,7 @@ namespace UnixxtyMCP.Editor.Tools
             // Try instance ID first (fast path)
             if (int.TryParse(identifier, out int instanceId))
             {
-                var obj = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+                var obj = EditorUtility.EntityIdToObject(instanceId) as GameObject;
                 return obj?.GetComponent<RectTransform>();
             }
 

@@ -23,7 +23,7 @@ namespace UnixxtyMCP.Editor.Core
             // Try instance ID first
             if (int.TryParse(target, out int instanceId))
             {
-                var obj = EditorUtility.InstanceIDToObject(instanceId);
+                var obj = EditorUtility.EntityIdToObject(instanceId);
                 if (obj is GameObject go) return go;
                 if (obj is Component comp) return comp.gameObject;
             }

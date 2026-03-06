@@ -111,22 +111,32 @@ namespace UnixxtyMCP.Editor.Tools
             };
         }
 
+        private static LightingSettings GetOrCreateLightingSettings()
+        {
+            if (Lightmapping.TryGetLightingSettings(out var settings) && settings != null)
+                return settings;
+
+            settings = new LightingSettings();
+            Lightmapping.lightingSettings = settings;
+            return settings;
+        }
+
         private static object GetSettings()
         {
-            var settings = LightmapEditorSettings.lightmapper;
+            var ls = GetOrCreateLightingSettings();
 
             return new
             {
                 success = true,
-                lightmapper = settings.ToString(),
-                lightmapResolution = LightmapEditorSettings.bakeResolution,
-                lightmapPadding = LightmapEditorSettings.padding,
-                maxLightmapSize = LightmapEditorSettings.maxAtlasSize,
-                ambientOcclusion = LightmapEditorSettings.enableAmbientOcclusion,
-                aoMaxDistance = LightmapEditorSettings.aoMaxDistance,
+                lightmapper = ls.lightmapper.ToString(),
+                lightmapResolution = ls.lightmapResolution,
+                lightmapPadding = ls.lightmapPadding,
+                maxLightmapSize = ls.lightmapMaxSize,
+                ambientOcclusion = ls.ao,
+                aoMaxDistance = ls.aoMaxDistance,
                 directionalMode = LightmapSettings.lightmapsMode.ToString(),
-                compressLightmaps = LightmapEditorSettings.textureCompression,
-                bounces = Lightmapping.bounceBoost > 0 ? (int?)null : null,
+                compressLightmaps = ls.compressLightmaps,
+                bounces = ls.indirectResolution > 0 ? (int?)null : null,
                 environmentLighting = new
                 {
                     source = RenderSettings.ambientMode.ToString(),
@@ -147,47 +157,48 @@ namespace UnixxtyMCP.Editor.Tools
         private static object SetSettings(string lightmapper, int? resolution, int? padding, int? maxSize,
             bool? ao, float? aoMaxDist, string directionalMode, bool? compress, int? bounceCount)
         {
+            var ls = GetOrCreateLightingSettings();
             var changes = new List<string>();
 
             if (!string.IsNullOrEmpty(lightmapper))
             {
                 var lm = lightmapper switch
                 {
-                    "ProgressiveGPU" => LightmapEditorSettings.Lightmapper.ProgressiveGPU,
-                    "ProgressiveCPU" => LightmapEditorSettings.Lightmapper.ProgressiveCPU,
+                    "ProgressiveGPU" => LightingSettings.Lightmapper.ProgressiveGPU,
+                    "ProgressiveCPU" => LightingSettings.Lightmapper.ProgressiveCPU,
                     _ => throw MCPException.InvalidParams($"Unknown lightmapper: '{lightmapper}'")
                 };
-                LightmapEditorSettings.lightmapper = lm;
+                ls.lightmapper = lm;
                 changes.Add($"lightmapper = {lightmapper}");
             }
 
             if (resolution.HasValue)
             {
-                LightmapEditorSettings.bakeResolution = resolution.Value;
+                ls.lightmapResolution = resolution.Value;
                 changes.Add($"resolution = {resolution.Value}");
             }
 
             if (padding.HasValue)
             {
-                LightmapEditorSettings.padding = padding.Value;
+                ls.lightmapPadding = padding.Value;
                 changes.Add($"padding = {padding.Value}");
             }
 
             if (maxSize.HasValue)
             {
-                LightmapEditorSettings.maxAtlasSize = maxSize.Value;
+                ls.lightmapMaxSize = maxSize.Value;
                 changes.Add($"maxAtlasSize = {maxSize.Value}");
             }
 
             if (ao.HasValue)
             {
-                LightmapEditorSettings.enableAmbientOcclusion = ao.Value;
+                ls.ao = ao.Value;
                 changes.Add($"ambientOcclusion = {ao.Value}");
             }
 
             if (aoMaxDist.HasValue)
             {
-                LightmapEditorSettings.aoMaxDistance = aoMaxDist.Value;
+                ls.aoMaxDistance = aoMaxDist.Value;
                 changes.Add($"aoMaxDistance = {aoMaxDist.Value}");
             }
 
@@ -205,7 +216,7 @@ namespace UnixxtyMCP.Editor.Tools
 
             if (compress.HasValue)
             {
-                LightmapEditorSettings.textureCompression = compress.Value;
+                ls.compressLightmaps = compress.Value;
                 changes.Add($"compressLightmaps = {compress.Value}");
             }
 

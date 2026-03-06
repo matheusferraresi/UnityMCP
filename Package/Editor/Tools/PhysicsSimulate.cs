@@ -64,7 +64,7 @@ namespace UnixxtyMCP.Editor.Tools
                 {
                     GameObject go = null;
                     if (int.TryParse(id, out int instanceId))
-                        go = EditorUtility.InstanceIDToObject(instanceId) as GameObject;
+                        go = EditorUtility.EntityIdToObject(instanceId) as GameObject;
                     if (go == null)
                         go = GameObject.Find(id);
 
