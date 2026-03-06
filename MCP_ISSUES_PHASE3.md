@@ -1,4 +1,4 @@
-# UnixxtyMCP Improvements Found During BattleYa UI Toolkit Adoption
+# UnixxtyMCP Improvements Found During Aethernals UI Toolkit Adoption
 
 Collected during UI Toolkit foundation setup and BossFightResult proof-of-concept migration (2026-03-05).
 Tested: PanelSettings creation, ThemeStyleSheet assignment, UIDocument scene wiring, UXML/USS authoring, runtime panel verification, play mode validation.
@@ -107,7 +107,7 @@ manage_uitoolkit(action: "scaffold_screen",
     name: "MainMenu",
     template: "menu",
     base_class: "UIScreenBase",
-    namespace: "BattleYa.UI",
+    namespace: "Aethernals.UI",
     elements: [
         { name: "start-btn", type: "Button", text: "Start Game" },
         { name: "title", type: "Label", text: "Aethernals" },
@@ -127,7 +127,7 @@ Generates:
 
 ## Issue 31: `execute_menu_item` Fails for Newly Compiled MenuItems (Known — See Issue 12)
 
-**Problem**: Same as Issue 12 from Phase 2, but confirmed still present. After `compile_and_watch` reports success for `UIToolkitSetup.cs` containing `[MenuItem("BattleYa/UI Toolkit/Create PanelSettings Asset")]`, `execute_menu_item` fails because the menu hasn't registered yet.
+**Problem**: Same as Issue 12 from Phase 2, but confirmed still present. After `compile_and_watch` reports success for `UIToolkitSetup.cs` containing `[MenuItem("Aethernals/UI Toolkit/Create PanelSettings Asset")]`, `execute_menu_item` fails because the menu hasn't registered yet.
 
 **Impact**: Same as Issue 12. Documented here as a re-confirmation during Phase 3 testing.
 

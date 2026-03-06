@@ -1,4 +1,4 @@
-# UnixxtyMCP Improvements Found During BattleYa Phase 0 (Mech Combat Pivot)
+# UnixxtyMCP Improvements Found During Aethernals Phase 0 (Mech Combat Pivot)
 
 Collected during Phase 0 mech combat prototype testing (2026-03-01).
 Tested: 4-phase skill-shot minigame, scene setup via MenuItem, play mode input simulation, scene cleanup.
@@ -7,7 +7,7 @@ Tested: 4-phase skill-shot minigame, scene setup via MenuItem, play mode input s
 
 ## Issue 12: compile_and_watch Doesn't Register New MenuItems (HIGH)
 
-**Problem**: After `compile_and_watch` completed successfully (0 errors, assembly_count: 1), `execute_menu_item("BattleYa/Setup Mech Combat Scene")` failed with "menu not found". The new `[MenuItem]` attribute was in a freshly compiled script, but Unity hadn't registered it yet. Had to call `unity_refresh` separately to trigger a full asset reimport before the menu item appeared.
+**Problem**: After `compile_and_watch` completed successfully (0 errors, assembly_count: 1), `execute_menu_item("Aethernals/Setup Mech Combat Scene")` failed with "menu not found". The new `[MenuItem]` attribute was in a freshly compiled script, but Unity hadn't registered it yet. Had to call `unity_refresh` separately to trigger a full asset reimport before the menu item appeared.
 
 **Impact**: HIGH — breaks the expected workflow of `write code → compile → use menu item`. AI assistants waste time debugging the menu path string when the real issue is stale registration.
 

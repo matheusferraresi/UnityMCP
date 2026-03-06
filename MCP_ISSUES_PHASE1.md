@@ -1,4 +1,4 @@
-# UnixxtyMCP Improvements Found During BattleYa Phase 1
+# UnixxtyMCP Improvements Found During Aethernals Phase 1
 
 Collected during Phase 1 multiplayer feature work (2026-02-28).
 Address these after Phase 1 is complete.

@@ -1,8 +1,8 @@
-# UnixxtyMCP — Improvement Plan (from BattleYa Field Testing)
+# UnixxtyMCP — Improvement Plan (from Aethernals Field Testing)
 
 ## Context
 
-These improvements were identified during a full Phase 0.3 polish session on BattleYa (Pangya x Gunbound artillery game). Claude Code used UnixxtyMCP extensively for scene setup, compilation, play mode testing, and ScriptableObject tuning. The issues below are real friction points encountered during production use — not hypotheticals.
+These improvements were identified during a full Phase 0.3 polish session on Aethernals (Pangya x Gunbound artillery game). Claude Code used UnixxtyMCP extensively for scene setup, compilation, play mode testing, and ScriptableObject tuning. The issues below are real friction points encountered during production use — not hypotheticals.
 
 **Source repo**: `D:\GameDev\UnityMCP`
 **Package**: `Package/Editor/Tools/`

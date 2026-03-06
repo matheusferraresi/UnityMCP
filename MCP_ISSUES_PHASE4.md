@@ -1,6 +1,6 @@
 # UnixxtyMCP Improvements Found During ArcUI Default Font System Implementation
 
-Collected during ArcUI default font system implementation and BattleYa UITK text visibility fix (2026-03-05).
+Collected during ArcUI default font system implementation and Aethernals UITK text visibility fix (2026-03-05).
 Tested: `execute_menu_item`, `compile_and_watch`, `editor_eval`, `unity_refresh`, `manage_uitoolkit`, USS editing, FontAsset creation, PanelTextSettings wiring, package asset importing.
 
 ---
