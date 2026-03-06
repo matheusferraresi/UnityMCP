@@ -4,6 +4,7 @@ using System.IO;
 using UnityEditor;
 using UnityEngine;
 using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Utilities;
 
 namespace UnixxtyMCP.Editor.Tools
 {
@@ -146,24 +147,23 @@ namespace UnixxtyMCP.Editor.Tools
 
         private static CaptureData CaptureGameViewRaw(int targetWidth, int targetHeight)
         {
+            int captureHeight = targetHeight > 0 ? targetHeight : Mathf.RoundToInt(targetWidth * 0.75f);
+
+            // Primary: Read from Game View's composited RT (includes UITK panels)
+            if (GameViewCapture.TryCaptureComposited(targetWidth, captureHeight,
+                    out byte[] compositedPng, out int cw, out int ch, out string diag))
+            {
+                return new CaptureData { PngBytes = compositedPng, Width = cw, Height = ch };
+            }
+
+            // Fallback: Camera.Render() only (no UITK panels)
             try
             {
-                var gameViewType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
-                if (gameViewType == null) return null;
-
-                var gameView = EditorWindow.GetWindow(gameViewType, false, null, false);
-                if (gameView == null) return null;
-
-                // Repaint all views to ensure UITK panels are composited into the frame
-                gameView.Repaint();
-                UnityEditorInternal.InternalEditorUtility.RepaintAllViews();
-
                 var cameras = Camera.allCameras;
                 if (cameras.Length == 0 && Camera.main == null)
-                    return new CaptureData { Error = "No cameras found in scene." };
+                    return new CaptureData { Error = $"No cameras found. GameView capture also failed: {diag}" };
 
                 var camera = Camera.main ?? cameras[0];
-                int captureHeight = targetHeight > 0 ? targetHeight : Mathf.RoundToInt(targetWidth * 0.75f);
 
                 var rt = new RenderTexture(targetWidth, captureHeight, 24, RenderTextureFormat.ARGB32);
                 var prevRT = camera.targetTexture;
@@ -171,9 +171,6 @@ namespace UnixxtyMCP.Editor.Tools
                 camera.targetTexture = rt;
                 camera.Render();
                 camera.targetTexture = prevRT;
-
-                // Composite UITK panels on top of the camera render
-                CompositeUIToolkitPanels(rt);
 
                 var tex = new Texture2D(targetWidth, captureHeight, TextureFormat.RGB24, false);
                 var prevActive = RenderTexture.active;
@@ -239,36 +236,5 @@ namespace UnixxtyMCP.Editor.Tools
             }
         }
 
-        /// <summary>
-        /// Renders all active UI Toolkit panels into a RenderTexture by using the
-        /// Game View's built-in panel rendering. This captures UITK overlays that
-        /// Camera.Render() alone misses since UITK is composited at a different stage.
-        /// </summary>
-        private static void CompositeUIToolkitPanels(RenderTexture target)
-        {
-            try
-            {
-                // Use UIElementsRuntimeUtility to repaint active panels onto the target RT.
-                // This is the internal path Unity uses to composite UITK panels in the Game View.
-                var runtimeUtilType = typeof(UnityEngine.UIElements.VisualElement).Assembly
-                    .GetType("UnityEngine.UIElements.UIElementsRuntimeUtility");
-                if (runtimeUtilType == null) return;
-
-                var repaintMethod = runtimeUtilType.GetMethod("RepaintOverlayPanels",
-                    System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.Public | System.Reflection.BindingFlags.NonPublic);
-
-                if (repaintMethod != null)
-                {
-                    var prevActive = RenderTexture.active;
-                    RenderTexture.active = target;
-                    repaintMethod.Invoke(null, null);
-                    RenderTexture.active = prevActive;
-                }
-            }
-            catch
-            {
-                // Silently fail — camera-only capture still works, just without UITK overlay
-            }
-        }
     }
 }

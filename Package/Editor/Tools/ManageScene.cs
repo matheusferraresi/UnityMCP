@@ -569,34 +569,55 @@ namespace UnixxtyMCP.Editor.Tools
 
                 string relativePath = "Assets/Screenshots/" + Path.GetFileName(finalPath);
 
-                // Try synchronous RenderTexture capture first (works in both Edit and Play mode)
+                // Get Game View size for resolution
+                int baseWidth = 1920;
+                int baseHeight = 1080;
+                try
+                {
+                    var gameViewType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
+                    if (gameViewType != null)
+                    {
+                        var gv = EditorWindow.GetWindow(gameViewType, false, null, false);
+                        if (gv != null)
+                        {
+                            var pos = gv.position;
+                            baseWidth = Mathf.Max(320, (int)pos.width);
+                            baseHeight = Mathf.Max(240, (int)pos.height);
+                        }
+                    }
+                }
+                catch { }
+
+                int captureWidth = baseWidth * resolvedSuperSize;
+                int captureHeight = baseHeight * resolvedSuperSize;
+
+                // Primary: Game View composited capture (includes UITK panels)
+                if (GameViewCapture.TryCaptureComposited(captureWidth, captureHeight,
+                        out byte[] compositedPng, out int cw, out int ch, out string _diag))
+                {
+                    File.WriteAllBytes(finalPath, compositedPng);
+                    AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceSynchronousImport);
+
+                    return new
+                    {
+                        success = true,
+                        message = "Screenshot captured.",
+                        path = relativePath,
+                        fullPath = finalPath,
+                        width = cw,
+                        height = ch,
+                        file_size_bytes = compositedPng.Length,
+                        superSize = resolvedSuperSize,
+                        capture_method = "gameview_composited"
+                    };
+                }
+
+                // Fallback: Camera.Render() only (no UITK panels)
                 var cameras = Camera.allCameras;
                 Camera cam = Camera.main ?? (cameras.Length > 0 ? cameras[0] : null);
 
                 if (cam != null)
                 {
-                    // Get Game View size for accurate resolution
-                    int baseWidth = 1920;
-                    int baseHeight = 1080;
-                    try
-                    {
-                        var gameViewType = typeof(UnityEditor.Editor).Assembly.GetType("UnityEditor.GameView");
-                        if (gameViewType != null)
-                        {
-                            var gameView = EditorWindow.GetWindow(gameViewType, false, null, false);
-                            if (gameView != null)
-                            {
-                                var pos = gameView.position;
-                                baseWidth = Mathf.Max(320, (int)pos.width);
-                                baseHeight = Mathf.Max(240, (int)pos.height);
-                            }
-                        }
-                    }
-                    catch { }
-
-                    int captureWidth = baseWidth * resolvedSuperSize;
-                    int captureHeight = baseHeight * resolvedSuperSize;
-
                     var rt = new RenderTexture(captureWidth, captureHeight, 24, RenderTextureFormat.ARGB32);
                     var prevRT = cam.targetTexture;
 
@@ -616,8 +637,6 @@ namespace UnixxtyMCP.Editor.Tools
                     UnityEngine.Object.DestroyImmediate(rt);
 
                     File.WriteAllBytes(finalPath, png);
-
-                    // Import into AssetDatabase
                     AssetDatabase.ImportAsset(relativePath, ImportAssetOptions.ForceSynchronousImport);
 
                     return new
@@ -629,7 +648,8 @@ namespace UnixxtyMCP.Editor.Tools
                         width = captureWidth,
                         height = captureHeight,
                         file_size_bytes = png.Length,
-                        superSize = resolvedSuperSize
+                        superSize = resolvedSuperSize,
+                        capture_method = "camera_render"
                     };
                 }
 

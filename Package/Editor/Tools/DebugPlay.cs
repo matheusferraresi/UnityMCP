@@ -5,6 +5,7 @@ using System.Reflection;
 using UnityEditor;
 using UnityEngine;
 using UnixxtyMCP.Editor.Core;
+using UnixxtyMCP.Editor.Utilities;
 
 namespace UnixxtyMCP.Editor.Tools
 {
@@ -141,32 +142,45 @@ namespace UnixxtyMCP.Editor.Tools
             {
                 try
                 {
-                    var cameras = Camera.allCameras;
-                    var camera = Camera.main ?? (cameras.Length > 0 ? cameras[0] : null);
+                    int w = 640, h = 480;
 
-                    if (camera != null)
+                    // Primary: Game View composited capture (includes UITK panels)
+                    if (GameViewCapture.TryCaptureComposited(w, h,
+                            out byte[] compositedPng, out int cw, out int ch, out string _))
                     {
-                        int w = 640, h = 480;
-                        var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
-                        var prevRT = camera.targetTexture;
-                        camera.targetTexture = rt;
-                        camera.Render();
-                        camera.targetTexture = prevRT;
+                        job.screenshotBase64 = Convert.ToBase64String(compositedPng);
+                        job.screenshotWidth = cw;
+                        job.screenshotHeight = ch;
+                    }
+                    else
+                    {
+                        // Fallback: Camera.Render() only
+                        var cameras = Camera.allCameras;
+                        var camera = Camera.main ?? (cameras.Length > 0 ? cameras[0] : null);
 
-                        var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
-                        var prevActive = RenderTexture.active;
-                        RenderTexture.active = rt;
-                        tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
-                        tex.Apply();
-                        RenderTexture.active = prevActive;
+                        if (camera != null)
+                        {
+                            var rt = new RenderTexture(w, h, 24, RenderTextureFormat.ARGB32);
+                            var prevRT = camera.targetTexture;
+                            camera.targetTexture = rt;
+                            camera.Render();
+                            camera.targetTexture = prevRT;
 
-                        byte[] png = tex.EncodeToPNG();
-                        job.screenshotBase64 = Convert.ToBase64String(png);
-                        job.screenshotWidth = w;
-                        job.screenshotHeight = h;
+                            var tex = new Texture2D(w, h, TextureFormat.RGB24, false);
+                            var prevActive = RenderTexture.active;
+                            RenderTexture.active = rt;
+                            tex.ReadPixels(new Rect(0, 0, w, h), 0, 0);
+                            tex.Apply();
+                            RenderTexture.active = prevActive;
 
-                        UnityEngine.Object.DestroyImmediate(tex);
-                        UnityEngine.Object.DestroyImmediate(rt);
+                            byte[] png = tex.EncodeToPNG();
+                            job.screenshotBase64 = Convert.ToBase64String(png);
+                            job.screenshotWidth = w;
+                            job.screenshotHeight = h;
+
+                            UnityEngine.Object.DestroyImmediate(tex);
+                            UnityEngine.Object.DestroyImmediate(rt);
+                        }
                     }
                 }
                 catch (Exception ex)
